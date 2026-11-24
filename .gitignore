@@ -1,0 +1,18 @@
+# Build output
+/bin/
+/dist/
+
+# Test and coverage output
+*.out
+*.test
+coverage.*
+
+# Real-cluster snapshots and reports stay on this machine.
+# Never commit cluster, namespace or workload names, events or telemetry.
+/.kubeshrink/
+/local/
+
+# Editors and OS
+.idea/
+.vscode/
+.DS_Store

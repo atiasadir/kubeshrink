@@ -1,0 +1,46 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# Least-privilege, read-only access for KubeShrink's live mode.
+# KubeShrink never applies this for you. A cluster admin can apply it and bind
+# it to a dedicated identity so the "read-only" promise is enforced by the API
+# server, not just by KubeShrink's code.
+#
+# Only get/list. No Secrets, no ConfigMaps, no write verbs.
+# Keep in sync with internal/live/live.go (Resources).
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: kubeshrink-readonly
+rules:
+  - apiGroups: [""]
+    resources: [nodes, pods, events]
+    verbs: [get, list]
+  - apiGroups: [policy]
+    resources: [poddisruptionbudgets]
+    verbs: [get, list]
+  - apiGroups: [autoscaling]
+    resources: [horizontalpodautoscalers]
+    verbs: [get, list]
+  - apiGroups: [apps]
+    resources: [deployments, statefulsets, replicasets]
+    verbs: [get, list]
+  - apiGroups: [keda.sh]
+    resources: [scaledobjects]
+    verbs: [get, list]
+  - apiGroups: [autoscaling.k8s.io]
+    resources: [verticalpodautoscalers]
+    verbs: [get, list]
+---
+# Example binding to a group; replace the subject with your own identity.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: kubeshrink-readonly
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: kubeshrink-readonly
+subjects:
+  - apiGroup: rbac.authorization.k8s.io
+    kind: Group
+    name: kubeshrink-readers

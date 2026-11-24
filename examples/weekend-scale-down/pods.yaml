@@ -1,0 +1,133 @@
+# Synthetic pods, one YAML document each.
+# A node-exporter DaemonSet pod runs on every node.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: node-exporter-a
+  namespace: monitoring
+  ownerReferences: [{kind: DaemonSet, name: node-exporter, controller: true}]
+spec:
+  nodeName: node-a
+  containers: [{name: exporter, resources: {requests: {cpu: 100m, memory: 128Mi}}}]
+status: {phase: Running}
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: node-exporter-b
+  namespace: monitoring
+  ownerReferences: [{kind: DaemonSet, name: node-exporter, controller: true}]
+spec:
+  nodeName: node-b
+  containers: [{name: exporter, resources: {requests: {cpu: 100m, memory: 128Mi}}}]
+status: {phase: Running}
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: node-exporter-c
+  namespace: monitoring
+  ownerReferences: [{kind: DaemonSet, name: node-exporter, controller: true}]
+spec:
+  nodeName: node-c
+  containers: [{name: exporter, resources: {requests: {cpu: 100m, memory: 128Mi}}}]
+status: {phase: Running}
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: node-exporter-d
+  namespace: monitoring
+  ownerReferences: [{kind: DaemonSet, name: node-exporter, controller: true}]
+spec:
+  nodeName: node-d
+  containers: [{name: exporter, resources: {requests: {cpu: 100m, memory: 128Mi}}}]
+status: {phase: Running}
+---
+# node-a: the web front end (scaled to 1) and a single-replica database with a strict PDB.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: web-7d9f8-x2k4p
+  namespace: shop
+  labels: {app: web}
+  ownerReferences: [{kind: ReplicaSet, name: web-7d9f8, controller: true}]
+spec:
+  nodeName: node-a
+  containers: [{name: web, resources: {requests: {cpu: 500m, memory: 1Gi}}}]
+status: {phase: Running}
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: db-0
+  namespace: data
+  labels: {app: db}
+  ownerReferences: [{kind: StatefulSet, name: db, controller: true}]
+spec:
+  nodeName: node-a
+  containers: [{name: db, resources: {requests: {cpu: "1", memory: 4Gi}}}]
+status: {phase: Running}
+---
+# node-b: a hand-started pod with scratch space, and a finished job pod.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: adhoc-report
+  namespace: batch
+spec:
+  nodeName: node-b
+  containers: [{name: report, resources: {requests: {cpu: 500m, memory: 1Gi}}}]
+  volumes: [{name: scratch, emptyDir: {}}]
+status: {phase: Running}
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: nightly-export-29384756-abcde
+  namespace: batch
+  ownerReferences: [{kind: Job, name: nightly-export-29384756, controller: true}]
+spec:
+  nodeName: node-b
+  containers: [{name: export, resources: {requests: {cpu: 250m, memory: 512Mi}}}]
+status: {phase: Succeeded}
+---
+# node-c: a worker marked do-not-disrupt and an inference pod pinned to the only GPU-labelled node.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: worker-5c6b7-q8w2e
+  namespace: shop
+  labels: {app: worker}
+  annotations: {karpenter.sh/do-not-disrupt: "true"}
+  ownerReferences: [{kind: ReplicaSet, name: worker-5c6b7, controller: true}]
+spec:
+  nodeName: node-c
+  containers: [{name: worker, resources: {requests: {cpu: 500m, memory: 1Gi}}}]
+status: {phase: Running}
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: infer-0
+  namespace: ml
+  labels: {app: infer}
+  ownerReferences: [{kind: StatefulSet, name: infer, controller: true}]
+spec:
+  nodeName: node-c
+  nodeSelector: {accelerator: gpu-a}
+  containers: [{name: infer, resources: {requests: {cpu: 2500m, memory: 8Gi}}}]
+status: {phase: Running}
+---
+# node-d: the second worker replica, held by its autoscaler floors.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: worker-5c6b7-z9m1n
+  namespace: shop
+  labels: {app: worker}
+  ownerReferences: [{kind: ReplicaSet, name: worker-5c6b7, controller: true}]
+spec:
+  nodeName: node-d
+  containers: [{name: worker, resources: {requests: {cpu: 500m, memory: 1Gi}}}]
+status: {phase: Running}

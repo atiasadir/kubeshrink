@@ -1,0 +1,39 @@
+# Synthetic workloads. The worker ReplicaSet is intentionally missing, so
+# KubeShrink has to infer the Deployment name from the pod's owner.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web
+  namespace: shop
+  annotations:
+    downscaler/downtime-replicas: "0"
+spec: {replicas: 1}
+---
+apiVersion: apps/v1
+kind: ReplicaSet
+metadata:
+  name: web-7d9f8
+  namespace: shop
+  ownerReferences: [{kind: Deployment, name: web, controller: true}]
+spec: {replicas: 1}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: worker
+  namespace: shop
+spec: {replicas: 2}
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: db
+  namespace: data
+spec: {replicas: 1}
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: infer
+  namespace: ml
+spec: {replicas: 1}

@@ -1,0 +1,65 @@
+# Synthetic disruption budgets and autoscalers.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: db-pdb
+  namespace: data
+spec:
+  minAvailable: 1
+  selector: {matchLabels: {app: db}}
+status: {disruptionsAllowed: 0, currentHealthy: 1, desiredHealthy: 1, expectedPods: 1}
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: web
+  namespace: shop
+spec:
+  scaleTargetRef: {apiVersion: apps/v1, kind: Deployment, name: web}
+  minReplicas: 1
+  maxReplicas: 6
+status: {currentReplicas: 1, desiredReplicas: 1}
+---
+# A hand-made HPA on the same Deployment KEDA already scales.
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: worker
+  namespace: shop
+spec:
+  scaleTargetRef: {apiVersion: apps/v1, kind: Deployment, name: worker}
+  minReplicas: 2
+  maxReplicas: 10
+status: {currentReplicas: 2, desiredReplicas: 2}
+---
+# The HPA KEDA creates for the ScaledObject below.
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: keda-hpa-worker
+  namespace: shop
+  ownerReferences: [{kind: ScaledObject, name: worker, controller: true}]
+spec:
+  scaleTargetRef: {apiVersion: apps/v1, kind: Deployment, name: worker}
+  minReplicas: 2
+  maxReplicas: 20
+status: {currentReplicas: 2, desiredReplicas: 2}
+---
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: worker
+  namespace: shop
+spec:
+  scaleTargetRef: {name: worker}
+  minReplicaCount: 2
+  maxReplicaCount: 20
+---
+apiVersion: autoscaling.k8s.io/v1
+kind: VerticalPodAutoscaler
+metadata:
+  name: web
+  namespace: shop
+spec:
+  targetRef: {apiVersion: apps/v1, kind: Deployment, name: web}
+  updatePolicy: {updateMode: "Off"}

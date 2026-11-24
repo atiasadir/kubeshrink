@@ -1,0 +1,25 @@
+{
+  "apiVersion": "v1",
+  "kind": "EventList",
+  "items": [
+    {
+      "metadata": {"name": "node-c.1801a2b3c4d5e6f7", "namespace": "default"},
+      "involvedObject": {"kind": "Node", "name": "node-c"},
+      "reason": "DisruptionBlocked",
+      "message": "Pod \"shop/worker-5c6b7-q8w2e\" has \"karpenter.sh/do-not-disrupt\" annotation",
+      "type": "Normal",
+      "count": 12,
+      "lastTimestamp": "2026-11-21T03:00:00Z",
+      "source": {"component": "karpenter"}
+    },
+    {
+      "metadata": {"name": "web-7d9f8-x2k4p.1801a2b3c4d5e6f8", "namespace": "shop"},
+      "involvedObject": {"kind": "Pod", "namespace": "shop", "name": "web-7d9f8-x2k4p"},
+      "reason": "Pulled",
+      "message": "Container image already present on machine",
+      "type": "Normal",
+      "lastTimestamp": "2026-11-20T18:00:00Z",
+      "source": {"component": "kubelet"}
+    }
+  ]
+}
