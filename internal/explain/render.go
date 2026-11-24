@@ -20,7 +20,11 @@ func WriteJSON(w io.Writer, v any) error {
 // with its claim, evidence, other explanations and unknowns.
 func WriteText(w io.Writer, r *NodeReport) error {
 	b := &strings.Builder{}
-	fmt.Fprintf(b, "Node %s: %s\n%s\n", r.Node, strings.ToUpper(r.Verdict), r.Summary)
+	fmt.Fprintf(b, "Node %s: %s\n", r.Node, strings.ToUpper(r.Verdict))
+	if r.ManagedBy != "" {
+		fmt.Fprintf(b, "Managed by: %s\n", r.ManagedBy)
+	}
+	fmt.Fprintf(b, "%s\n", r.Summary)
 	if len(r.PodsToMove) > 0 {
 		fmt.Fprintf(b, "\nPods that would need to move (%d):\n", len(r.PodsToMove))
 		for _, p := range r.PodsToMove {
@@ -80,10 +84,14 @@ func writeList(b *strings.Builder, title string, items []string) {
 // WriteSummaryTable renders one line per node, for `explain nodes`.
 func WriteSummaryTable(w io.Writer, reports []*NodeReport) error {
 	b := &strings.Builder{}
-	fmt.Fprintf(b, "%-28s %-17s %8s %9s %8s %8s %5s\n", "NODE", "VERDICT", "BLOCKERS", "POSSIBLE", "WARNINGS", "CONTEXT", "PODS")
+	width := len("NODE")
+	for _, r := range reports {
+		width = max(width, len(r.Node))
+	}
+	fmt.Fprintf(b, "%-*s  %-17s %8s %9s %8s %8s %5s\n", width, "NODE", "VERDICT", "BLOCKERS", "POSSIBLE", "WARNINGS", "CONTEXT", "PODS")
 	for _, r := range reports {
 		c := r.Counts()
-		fmt.Fprintf(b, "%-28s %-17s %8d %9d %8d %8d %5d\n", r.Node, r.Verdict, c[Blocker], c[PossibleBlocker], c[Warning], c[Context], len(r.PodsToMove))
+		fmt.Fprintf(b, "%-*s  %-17s %8d %9d %8d %8d %5d\n", width, r.Node, r.Verdict, c[Blocker], c[PossibleBlocker], c[Warning], c[Context], len(r.PodsToMove))
 	}
 	_, err := io.WriteString(w, b.String())
 	return err

@@ -379,6 +379,30 @@ func TestSingleNodeReportsOnce(t *testing.T) {
 	}
 }
 
+// On a Karpenter-managed node, Cluster Autoscaler-only findings are dropped and the omission is noted.
+func TestKarpenterNodeOmitsCAOnlyFindings(t *testing.T) {
+	s := base(pod("ns", "p", "n1", "100m", "128Mi", owner("", ""), annotate(annKarpenterDoNotDisrupt, "true"), func(p *snapshot.Pod) {
+		p.Spec.Volumes = []snapshot.Volume{{Name: "tmp", EmptyDir: []byte("{}")}}
+	}))
+	s.Nodes[0].Metadata.Labels[labelKarpenterNodePool] = "general"
+	r, err := ExplainNode(s, "n1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := ruleSet(r)
+	for _, rule := range []string{"local-storage", "pod-without-controller"} {
+		if _, ok := got[rule]; ok {
+			t.Errorf("CA-only rule %s should be omitted on a Karpenter node", rule)
+		}
+	}
+	if _, ok := got["karpenter-do-not-disrupt"]; !ok {
+		t.Error("Karpenter findings must be kept")
+	}
+	if r.ManagedBy != Karpenter || len(r.DataNotes) != 1 || !strings.Contains(r.DataNotes[0], "2 Cluster Autoscaler-only") {
+		t.Errorf("ManagedBy = %q, DataNotes = %v", r.ManagedBy, r.DataNotes)
+	}
+}
+
 func TestUnknownNode(t *testing.T) {
 	if _, err := ExplainNode(base(), "missing"); err == nil {
 		t.Fatal("expected an error for an unknown node")

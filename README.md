@@ -24,11 +24,11 @@ make build                       # bin/kubeshrink, with version info
 ```
 
 ```text
-NODE                         VERDICT           BLOCKERS  POSSIBLE WARNINGS  CONTEXT  PODS
-node-a                       blocked                  1         0        1        1     2
-node-b                       blocked                  1         1        0        0     1
-node-c                       blocked                  2         1        1        3     2
-node-d                       no-blocker-found         0         0        1        2     1
+NODE    VERDICT           BLOCKERS  POSSIBLE WARNINGS  CONTEXT  PODS
+node-a  blocked                  1         0        1        1     2
+node-b  blocked                  1         1        0        0     1
+node-c  blocked                  2         1        1        3     2
+node-d  no-blocker-found         0         0        1        2     1
 ```
 
 An excerpt of `explain node node-c`:

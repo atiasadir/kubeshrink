@@ -30,7 +30,7 @@ func ExplainNode(s *snapshot.Snapshot, name string) (*NodeReport, error) {
 		Node:        name,
 		PodsToMove:  []string{},
 		Findings:    []Finding{},
-		DataNotes:   s.Notes,
+		DataNotes:   append([]string(nil), s.Notes...),
 		Limitations: Limitations,
 	}
 	for i := range s.Pods {
@@ -55,6 +55,7 @@ func ExplainNode(s *snapshot.Snapshot, name string) (*NodeReport, error) {
 			r.Findings = append(r.Findings, rule.check(c)...)
 		}
 	}
+	applyNodeManager(r, node)
 	sortFindings(r.Findings)
 	summarize(r)
 	return r, nil
@@ -113,6 +114,32 @@ func summarize(r *NodeReport) {
 		counts[Blocker], counts[PossibleBlocker], counts[Warning], counts[Context], len(r.PodsToMove))
 	if r.Verdict == VerdictNoBlockerFound {
 		r.Summary += " No rule found a reason this node must stay. That is not proof it is removable; see the limitations."
+	}
+}
+
+const labelKarpenterNodePool = "karpenter.sh/nodepool"
+
+// applyNodeManager records which autoscaler manages the node when its labels
+// say so, and drops findings that only matter to the other autoscaler. The
+// omission is reported so nothing disappears silently.
+func applyNodeManager(r *NodeReport, n *snapshot.Node) {
+	pool, ok := n.Metadata.Labels[labelKarpenterNodePool]
+	if !ok {
+		return
+	}
+	r.ManagedBy = Karpenter
+	kept := r.Findings[:0]
+	omitted := 0
+	for _, f := range r.Findings {
+		if len(f.AppliesTo) == 1 && f.AppliesTo[0] == CA {
+			omitted++
+			continue
+		}
+		kept = append(kept, f)
+	}
+	r.Findings = kept
+	if omitted > 0 {
+		r.DataNotes = append(r.DataNotes, fmt.Sprintf("Node is managed by Karpenter (label %s=%s); %d Cluster Autoscaler-only finding(s) were omitted.", labelKarpenterNodePool, pool, omitted))
 	}
 }
 

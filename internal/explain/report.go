@@ -68,6 +68,7 @@ type IgnoredPod struct {
 
 type NodeReport struct {
 	Node        string       `json:"node"`
+	ManagedBy   string       `json:"managedBy,omitempty"`
 	Verdict     string       `json:"verdict"`
 	Summary     string       `json:"summary"`
 	PodsToMove  []string     `json:"podsToMove"`

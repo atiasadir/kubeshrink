@@ -83,7 +83,8 @@ flowchart LR
 1. `main.run` parses flags and loads a `Snapshot` from files or from the live reader. Both produce the same structure, so rules never know where data came from.
 2. `explain.ExplainNode` sorts the node's pods into *ignored* (DaemonSet, static, finished) and *pods that must move*.
 3. It runs every rule in `Catalog` against a `nodeContext` (snapshot, node, pods that must move). Each rule returns zero or more findings.
-4. Findings are sorted (blockers first), counted into a verdict and summary, and rendered.
+4. If the node is labelled `karpenter.sh/nodepool`, findings that only apply to Cluster Autoscaler are dropped and a data note says how many.
+5. Findings are sorted (blockers first), counted into a verdict and summary, and rendered.
 
 Adding a rule means writing one `func(*nodeContext) []Finding`, adding it to `Catalog` with an explanation, and adding a table test case.
 
@@ -129,7 +130,8 @@ Run `kubeshrink rules` for the authoritative list. Today:
 **MVP (this slice):** offline snapshots, live read-only mode, `explain node` / `explain nodes`, 16 rules, text and JSON output, kubectl plugin naming.
 
 **Next:**
-- Karpenter NodePools/NodeClaims (budgets, consolidation policy) and the CA status ConfigMap as first-class evidence.
+- Karpenter NodePools/NodeClaims (budgets, consolidation policy) and the CA status ConfigMap as first-class evidence, including NodeClaim events and a plain-language reading of `Unconsolidatable` reasons such as "can't replace with a cheaper node".
+- Detect Cluster Autoscaler-managed nodes too, so Karpenter-only findings can be dropped symmetrically.
 - Pod affinity, topology spread and init-container requests in the fit heuristic.
 - `explain workload <name>`: why didn't this workload's replicas drop?
 - **Time windows**: compare two snapshots (or a metrics source) to explain "replicas fell but node-hours didn't" over a weekend.
