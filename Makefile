@@ -24,6 +24,10 @@ plugin: build ## Also produce bin/kubectl-shrink so `kubectl shrink` works when 
 test: ## Run unit tests with the race detector
 	go test -race ./...
 
+.PHONY: goldens
+goldens: ## Rewrite the golden files after an intended output change, then review the diff
+	go test ./cmd/kubeshrink -run TestGolden -update
+
 lint: ## Run golangci-lint (https://golangci-lint.run)
 	golangci-lint run
 

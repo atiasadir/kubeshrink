@@ -1,0 +1,64 @@
+Namespace ml
+ml runs 1 pod(s) on 1 node(s) and requests 2.5 CPU, 8.0Gi memory. Its share of the idle capacity on those nodes is 726m CPU, 6.0Gi memory, so its packing is 77% CPU and 57% memory. 1 blocker(s), 2 possible blocker(s), 0 warning(s), 0 context finding(s).
+VPA: 0 of 1 long-running workload(s) have a recommendation; 0 request more than it.
+
+Nodes it uses (idle share: its part of each node's unrequested capacity, split by requests)
+  NODE    POOL             REQUESTED       IDLE SHARE       NODE PACKING CPU/MEM  ALONE  VERDICT
+  node-c  (no pool label)  2.5 CPU, 8.0Gi  726m CPU, 6.0Gi  78% / 57%             no     blocked
+
+== POLICY: Where may they run, and may they move?
+
+[F1] BLOCKER  no-room-elsewhere  Pod/ml/infer-0
+    None of the 3 other schedulable node(s) in the snapshot can take this pod. Draining this node would leave it Pending, so autoscalers keep the node.
+    What it means: The other nodes say no because of: node selector on 3 node(s).
+    Applies to: cluster-autoscaler, karpenter
+    Confidence: medium
+    Evidence:
+      - Pod/ml/infer-0 requests (containers, init containers, overhead) = cpu=2500m memory=8Gi
+      - Pod/ml/infer-0 .spec.nodeSelector = accelerator=gpu-a
+      - Node/node-a fit check = node selector accelerator=gpu-a not matched
+      - Node/node-b fit check = node selector accelerator=gpu-a not matched
+      - Node/node-d fit check = node selector accelerator=gpu-a not matched
+    Other explanations:
+      - Karpenter may replace this node with a cheaper one instead of deleting it; this rule only checks moving pods onto existing nodes.
+      - Requests may be larger than real usage; right-sizing (for example with VPA recommendations) could create room.
+    Unknowns:
+      - Placement is a first-fit estimate by requests, largest pod first; a different packing might succeed.
+      - Volume zones, pod priority and preemption were not evaluated.
+
+== NODES: Will the node autoscaler remove or replace the node?
+
+[F2] POSSIBLE-BLOCKER  autoscaler-event  Node/node-c
+    karpenter reported DisruptionBlocked: Pod "shop/worker-5c6b7-q8w2e" has "karpenter.sh/do-not-disrupt" annotation (seen 12 times)
+    What it means: A karpenter.sh/do-not-disrupt annotation blocks voluntary disruption.
+    Applies to: karpenter
+    Confidence: high
+    Evidence:
+      - Event/default/node-c.1801a2b3c4d5e6f7 .reason, .message = DisruptionBlocked: Pod "shop/worker-5c6b7-q8w2e" has "karpenter.sh/do-not-disrupt" annotation (at 2026-11-21T03:00:00Z)
+    Unknowns:
+      - Events expire (one hour by default) and may describe an earlier state; compare the timestamp with when the snapshot was taken.
+
+[F3] POSSIBLE-BLOCKER  utilization-above-threshold  Node/node-c
+    Pods on this node request 78% of its CPU and 57% of its memory. Cluster Autoscaler only considers nodes below --scale-down-utilization-threshold (0.5 by default), so it may never evaluate this node for removal.
+    Applies to: cluster-autoscaler
+    Confidence: medium
+    Evidence:
+      - Node/node-c .status.allocatable = cpu=4 memory=16Gi
+      - Node/node-c sum of pod requests (including DaemonSets) = cpu=3100m memory=9344Mi
+    Other explanations:
+      - Karpenter consolidation does not use this threshold; it compares the cost of deleting or replacing the node.
+    Unknowns:
+      - The configured threshold and --ignore-daemonsets-utilization are not in the snapshot.
+
+1 more finding(s) on these nodes are about other namespaces' pods; run explain node for the full picture.
+
+Data notes:
+  - No node autoscaler was found in the snapshot (no Karpenter labels on nodes, no Cluster Autoscaler pods or events). Findings for both are kept, because managed offerings run Cluster Autoscaler outside the cluster. If no autoscaler runs, nothing removes nodes automatically: rerun with --node-autoscaler none to drop autoscaler-specific findings.
+
+Limitations:
+  - Snapshot heuristic, not a scheduler simulation: placement checks cover node selectors, required node affinity, taints, required pod (anti-)affinity, topology spread and host ports, but not volume zones, priorities, preemption or preferred rules.
+  - Autoscaler settings are read where the cluster exposes them (Karpenter NodePools and NodeClaims), not Cluster Autoscaler flags or node group minimums.
+  - One point in time: PDB status, replica counts and events change.
+  - Packing is measured with resource requests, not real usage.
+  - Pod size is judged only where a VPA recommendation exists; other workloads are unknowns.
+  - Read-only: KubeShrink never modifies a cluster.

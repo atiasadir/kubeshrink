@@ -1,0 +1,37 @@
+Namespace batch
+batch runs 1 pod(s) on 1 node(s) and requests 500m CPU, 1.0Gi memory. Its share of the idle capacity on those nodes is 2.8 CPU, 13.2Gi memory, so its packing is 15% CPU and 7% memory. 1 blocker(s), 1 possible blocker(s), 0 warning(s), 0 context finding(s).
+
+Nodes it uses (idle share: its part of each node's unrequested capacity, split by requests)
+  NODE    POOL             REQUESTED        IDLE SHARE       NODE PACKING CPU/MEM  ALONE  VERDICT
+  node-b  (no pool label)  500m CPU, 1.0Gi  2.8 CPU, 13.2Gi  15% / 7%              yes    blocked
+
+== POLICY: Where may they run, and may they move?
+
+[F1] BLOCKER  pod-without-controller  Pod/batch/adhoc-report
+    The pod has no controller, so nothing would recreate it elsewhere. Cluster Autoscaler keeps the node unless the pod is annotated safe-to-evict=true.
+    Applies to: cluster-autoscaler
+    Confidence: high
+    Evidence:
+      - Pod/batch/adhoc-report .metadata.ownerReferences = no entry with controller=true
+    Unknowns:
+      - Karpenter's handling of controller-less pods differs from Cluster Autoscaler's and has changed across versions; check its DisruptionBlocked events.
+
+[F2] POSSIBLE-BLOCKER  local-storage  Pod/batch/adhoc-report
+    The pod uses local storage (emptyDir or hostPath). Cluster Autoscaler skips nodes with such pods when --skip-nodes-with-local-storage is enabled.
+    Applies to: cluster-autoscaler
+    Confidence: medium
+    Evidence:
+      - Pod/batch/adhoc-report .spec.volumes[scratch].emptyDir = set
+    Unknowns:
+      - The Cluster Autoscaler flag value is not in the snapshot.
+
+Data notes:
+  - No node autoscaler was found in the snapshot (no Karpenter labels on nodes, no Cluster Autoscaler pods or events). Findings for both are kept, because managed offerings run Cluster Autoscaler outside the cluster. If no autoscaler runs, nothing removes nodes automatically: rerun with --node-autoscaler none to drop autoscaler-specific findings.
+
+Limitations:
+  - Snapshot heuristic, not a scheduler simulation: placement checks cover node selectors, required node affinity, taints, required pod (anti-)affinity, topology spread and host ports, but not volume zones, priorities, preemption or preferred rules.
+  - Autoscaler settings are read where the cluster exposes them (Karpenter NodePools and NodeClaims), not Cluster Autoscaler flags or node group minimums.
+  - One point in time: PDB status, replica counts and events change.
+  - Packing is measured with resource requests, not real usage.
+  - Pod size is judged only where a VPA recommendation exists; other workloads are unknowns.
+  - Read-only: KubeShrink never modifies a cluster.

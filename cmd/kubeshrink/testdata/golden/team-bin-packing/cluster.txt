@@ -1,0 +1,45 @@
+Cluster
+4 node(s) run; by requests alone their pods would fit on 2. Pods request 31% of allocatable CPU and 19% of memory. Verdicts: 4 blocked, 0 possibly blocked, 0 with no blocker found.
+Snapshot: taken 2026-11-21T03:00:00Z, Kubernetes v1.31.2
+
+Pools (needed: nodes the requests would fit on if placement rules did not exist; a lower bound, not a plan)
+  POOL     NODES  NEEDED  EMPTY  CPU REQUESTED/ALLOCATABLE  MEMORY REQUESTED/ALLOCATABLE
+  general  3      1       0      4.0/12.0 (34%)             7.4Gi/48.0Gi (15%)
+  ml       1      1       0      2.1/8.0 (26%)              8.1Gi/32.0Gi (25%)
+
+Node autoscaler: karpenter on 4 node(s)
+  NodePool general (3 node(s)): consolidationPolicy=WhenEmptyOrUnderutilized consolidateAfter=1m budgets=10% limits=cpu=64
+  NodePool ml (1 node(s)): consolidationPolicy=WhenEmpty consolidateAfter=30s
+
+What keeps nodes (rules that block or may block removal, most nodes first)
+  no-room-elsewhere [policy, blocker] on 4 node(s): general-a, general-b, general-c, ml-a
+      The other nodes say no because of: pod anti-affinity on 2 node(s), taint on 1 node(s).
+  karpenter-consolidation-policy [nodes, blocker] on 1 node(s): ml-a
+      NodePool ml only consolidates empty nodes (consolidationPolicy WhenEmpty). This node runs 1 pod(s) that would need to move, so Karpenter will not remove or replace it for being underused.
+  autoscaler-event [nodes, possible-blocker] on 1 node(s): general-b
+      Karpenter considered this node and found no cheaper replacement. Karpenter tries deleting a node before replacing it, so this usually also means its own simulation could not fit all of the node's pods onto the other nodes.
+
+Why pods exist: workloads held at a floor
+  1 workload(s) at HPA minReplicas 3: 3 pod(s) requesting 1.5 CPU, 3.0Gi
+  1 workload(s) at KEDA minReplicaCount 2: 2 pod(s) requesting 2.0 CPU, 4.0Gi
+
+How big pods are: requests against VPA recommendations
+  3 of 3 long-running workload(s) have a VPA recommendation; the others are unknowns, not judged.
+  1 workload(s) request more than their VPA recommends; running pods request 1.2 CPU, 1.9Gi above their VPA targets.
+  Estimate: at VPA targets (where one exists, actual requests elsewhere) the pods would fit on 2 node(s), against 2 at current requests. Lower bounds are never used, because memory below real usage risks OOM kills.
+
+Namespaces by the idle capacity they hold
+  NAMESPACE   PODS  NODES  REQUESTED        IDLE SHARE       PACKING CPU/MEM  PINNED
+  ml          1     1      2.0 CPU, 8.0Gi   5.6 CPU, 23.5Gi  26% / 25%        0
+  checkout    3     3      1.5 CPU, 3.0Gi   3.4 CPU, 21.5Gi  31% / 12%        1
+  reports     2     2      2.0 CPU, 4.0Gi   3.0 CPU, 16.5Gi  40% / 20%        1
+  monitoring  4     4      400m CPU, 512Mi  952m CPU, 3.1Gi  30% / 14%        0
+  batch       1     1      250m CPU, 0Mi    926m CPU, 0Mi    21% / 0%         0
+
+Limitations:
+  - Snapshot heuristic, not a scheduler simulation: placement checks cover node selectors, required node affinity, taints, required pod (anti-)affinity, topology spread and host ports, but not volume zones, priorities, preemption or preferred rules.
+  - Autoscaler settings are read where the cluster exposes them (Karpenter NodePools and NodeClaims), not Cluster Autoscaler flags or node group minimums.
+  - One point in time: PDB status, replica counts and events change.
+  - Packing is measured with resource requests, not real usage.
+  - Pod size is judged only where a VPA recommendation exists; other workloads are unknowns.
+  - Read-only: KubeShrink never modifies a cluster.

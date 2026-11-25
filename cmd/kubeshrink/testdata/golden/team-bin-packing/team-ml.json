@@ -1,0 +1,158 @@
+{
+  "namespace": "ml",
+  "summary": "ml runs 1 pod(s) on 1 node(s) and requests 2.0 CPU, 8.0Gi memory. Its share of the idle capacity on those nodes is 5.6 CPU, 23.5Gi memory, so its packing is 26% CPU and 25% memory. 2 blocker(s), 0 possible blocker(s), 0 warning(s), 1 context finding(s).",
+  "pods": 1,
+  "requested": {
+    "milliCPU": 2000,
+    "memoryBytes": 8589934592
+  },
+  "idleShare": {
+    "milliCPU": 5619.047619047619,
+    "memoryBytes": 25241192416.49231
+  },
+  "packingCPU": 0.2625,
+  "packingMemory": 0.25390625,
+  "nodes": [
+    {
+      "node": "ml-a",
+      "pool": "ml",
+      "requested": {
+        "milliCPU": 2000,
+        "memoryBytes": 8589934592
+      },
+      "idleShare": {
+        "milliCPU": 5619.047619047619,
+        "memoryBytes": 25241192416.49231
+      },
+      "nodePackingCPU": 0.2625,
+      "nodePackingMemory": 0.25390625,
+      "alone": true,
+      "verdict": "blocked"
+    }
+  ],
+  "findings": [
+    {
+      "id": "F1",
+      "rule": "vpa-min-allowed",
+      "layer": "requests",
+      "severity": "context",
+      "subject": "StatefulSet/ml/trainer",
+      "claim": "VPA trainer's minAllowed keeps its recommendation above what usage suggests: the uncapped target is lower.",
+      "meaning": "A configured floor, not usage, sets these requests.",
+      "confidence": "high",
+      "evidence": [
+        {
+          "object": "VerticalPodAutoscaler/ml/trainer",
+          "field": ".spec.resourcePolicy.containerPolicies[*].minAllowed.cpu",
+          "value": "2"
+        },
+        {
+          "object": "VerticalPodAutoscaler/ml/trainer",
+          "field": ".status.recommendation.containerRecommendations[trainer].uncappedTarget.cpu",
+          "value": "500m"
+        },
+        {
+          "object": "VerticalPodAutoscaler/ml/trainer",
+          "field": ".spec.resourcePolicy.containerPolicies[*].minAllowed.memory",
+          "value": "8Gi"
+        },
+        {
+          "object": "VerticalPodAutoscaler/ml/trainer",
+          "field": ".status.recommendation.containerRecommendations[trainer].uncappedTarget.memory",
+          "value": "3Gi"
+        }
+      ]
+    },
+    {
+      "id": "F2",
+      "rule": "no-room-elsewhere",
+      "layer": "policy",
+      "severity": "blocker",
+      "subject": "Pod/ml/trainer-0",
+      "claim": "None of the 3 other schedulable node(s) in the snapshot can take this pod. Draining this node would leave it Pending, so autoscalers keep the node.",
+      "meaning": "The other nodes say no because of: node selector on 3 node(s).",
+      "appliesTo": [
+        "cluster-autoscaler",
+        "karpenter"
+      ],
+      "confidence": "medium",
+      "evidence": [
+        {
+          "object": "Pod/ml/trainer-0",
+          "field": "requests (containers, init containers, overhead)",
+          "value": "cpu=2 memory=8Gi"
+        },
+        {
+          "object": "Pod/ml/trainer-0",
+          "field": ".spec.nodeSelector",
+          "value": "team=ml"
+        },
+        {
+          "object": "Node/general-a",
+          "field": "fit check",
+          "value": "node selector team=ml not matched"
+        },
+        {
+          "object": "Node/general-b",
+          "field": "fit check",
+          "value": "node selector team=ml not matched"
+        },
+        {
+          "object": "Node/general-c",
+          "field": "fit check",
+          "value": "node selector team=ml not matched"
+        }
+      ],
+      "alternatives": [
+        "Karpenter may replace this node with a cheaper one instead of deleting it; this rule only checks moving pods onto existing nodes.",
+        "Requests may be larger than real usage; right-sizing (for example with VPA recommendations) could create room."
+      ],
+      "unknowns": [
+        "Placement is a first-fit estimate by requests, largest pod first; a different packing might succeed.",
+        "Volume zones, pod priority and preemption were not evaluated."
+      ]
+    },
+    {
+      "id": "F3",
+      "rule": "karpenter-consolidation-policy",
+      "layer": "nodes",
+      "severity": "blocker",
+      "subject": "Node/ml-a",
+      "claim": "NodePool ml only consolidates empty nodes (consolidationPolicy WhenEmpty). This node runs 1 pod(s) that would need to move, so Karpenter will not remove or replace it for being underused.",
+      "appliesTo": [
+        "karpenter"
+      ],
+      "confidence": "high",
+      "evidence": [
+        {
+          "object": "NodePool/ml",
+          "field": ".spec.disruption.consolidationPolicy",
+          "value": "WhenEmpty"
+        },
+        {
+          "object": "Node/ml-a",
+          "field": ".metadata.labels[\"karpenter.sh/nodepool\"]",
+          "value": "ml"
+        }
+      ],
+      "alternatives": [
+        "Expiry or drift can still replace the node, depending on the NodePool's other settings."
+      ]
+    }
+  ],
+  "otherTenantFindings": 0,
+  "vpaCoverage": {
+    "workloads": 1,
+    "withVPA": 1,
+    "withRecommendation": 1,
+    "oversized": 0
+  },
+  "limitations": [
+    "Snapshot heuristic, not a scheduler simulation: placement checks cover node selectors, required node affinity, taints, required pod (anti-)affinity, topology spread and host ports, but not volume zones, priorities, preemption or preferred rules.",
+    "Autoscaler settings are read where the cluster exposes them (Karpenter NodePools and NodeClaims), not Cluster Autoscaler flags or node group minimums.",
+    "One point in time: PDB status, replica counts and events change.",
+    "Packing is measured with resource requests, not real usage.",
+    "Pod size is judged only where a VPA recommendation exists; other workloads are unknowns.",
+    "Read-only: KubeShrink never modifies a cluster."
+  ]
+}

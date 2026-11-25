@@ -1,0 +1,262 @@
+{
+  "node": "node-c",
+  "pool": "(no pool label)",
+  "managedBy": "unknown",
+  "verdict": "blocked",
+  "summary": "2 blocker(s), 2 possible blocker(s), 1 warning(s), 2 context finding(s); 2 pod(s) would need to move.",
+  "allocatable": {
+    "milliCPU": 4000,
+    "memoryBytes": 17179869184,
+    "pods": 110
+  },
+  "requested": {
+    "milliCPU": 3100,
+    "memoryBytes": 9797894144,
+    "pods": 3
+  },
+  "podsToMove": [
+    "Pod/shop/worker-5c6b7-q8w2e",
+    "Pod/ml/infer-0"
+  ],
+  "ignoredPods": [
+    {
+      "pod": "Pod/monitoring/node-exporter-c",
+      "reason": "DaemonSet pod; autoscalers do not need to reschedule it"
+    }
+  ],
+  "findings": [
+    {
+      "id": "F1",
+      "rule": "keda-hpa-conflict",
+      "layer": "replicas",
+      "severity": "warning",
+      "subject": "Deployment/shop/worker",
+      "claim": "The workload is targeted by a KEDA ScaledObject and by a separate HPA. KEDA manages its own HPA, so two HPAs act on the same replica count and can hold it above what either intends.",
+      "confidence": "high",
+      "evidence": [
+        {
+          "object": "Pod/shop/worker-5c6b7-q8w2e",
+          "field": ".metadata.ownerReferences (controller)",
+          "value": "ReplicaSet/worker-5c6b7"
+        },
+        {
+          "object": "Deployment/shop/worker",
+          "field": ".spec.replicas",
+          "value": "2"
+        },
+        {
+          "object": "ScaledObject/shop/worker",
+          "field": ".spec.scaleTargetRef",
+          "value": "Deployment/shop/worker"
+        },
+        {
+          "object": "HorizontalPodAutoscaler/shop/worker",
+          "field": ".spec.scaleTargetRef",
+          "value": "Deployment/shop/worker"
+        }
+      ],
+      "alternatives": [
+        "If the extra HPA was created by KEDA under a non-standard name, this is a false positive; check its ownerReferences."
+      ],
+      "unknowns": [
+        "The Deployment name was inferred from the ReplicaSet name because the ReplicaSet is not in the snapshot."
+      ]
+    },
+    {
+      "id": "F2",
+      "rule": "replica-floor",
+      "layer": "replicas",
+      "severity": "context",
+      "subject": "Deployment/shop/worker",
+      "claim": "The workload sits at its KEDA floor (minReplicaCount=2, replicas=2). KEDA will not scale it lower, so its 2 pod(s) keep holding 1.0 CPU and 2.0Gi memory even when idle.",
+      "meaning": "These pods exist because of configuration, not load. Lowering the minimum (or scaling to zero off-hours) is what frees this capacity.",
+      "confidence": "high",
+      "evidence": [
+        {
+          "object": "Pod/shop/worker-5c6b7-q8w2e",
+          "field": ".metadata.ownerReferences (controller)",
+          "value": "ReplicaSet/worker-5c6b7"
+        },
+        {
+          "object": "Deployment/shop/worker",
+          "field": ".spec.replicas",
+          "value": "2"
+        },
+        {
+          "object": "ScaledObject/shop/worker",
+          "field": ".spec.minReplicaCount",
+          "value": "2"
+        }
+      ],
+      "unknowns": [
+        "The Deployment name was inferred from the ReplicaSet name because the ReplicaSet is not in the snapshot."
+      ]
+    },
+    {
+      "id": "F3",
+      "rule": "replica-floor",
+      "layer": "replicas",
+      "severity": "context",
+      "subject": "Deployment/shop/worker",
+      "claim": "The workload sits at its HPA floor (minReplicas=2, replicas=2). HPA will not scale it lower, so its 2 pod(s) keep holding 1.0 CPU and 2.0Gi memory even when idle.",
+      "meaning": "These pods exist because of configuration, not load. Lowering the minimum (or scaling to zero off-hours) is what frees this capacity.",
+      "confidence": "high",
+      "evidence": [
+        {
+          "object": "Pod/shop/worker-5c6b7-q8w2e",
+          "field": ".metadata.ownerReferences (controller)",
+          "value": "ReplicaSet/worker-5c6b7"
+        },
+        {
+          "object": "Deployment/shop/worker",
+          "field": ".spec.replicas",
+          "value": "2"
+        },
+        {
+          "object": "HorizontalPodAutoscaler/shop/worker",
+          "field": ".spec.minReplicas",
+          "value": "2"
+        }
+      ],
+      "unknowns": [
+        "The Deployment name was inferred from the ReplicaSet name because the ReplicaSet is not in the snapshot."
+      ]
+    },
+    {
+      "id": "F4",
+      "rule": "no-room-elsewhere",
+      "layer": "policy",
+      "severity": "blocker",
+      "subject": "Pod/ml/infer-0",
+      "claim": "None of the 3 other schedulable node(s) in the snapshot can take this pod. Draining this node would leave it Pending, so autoscalers keep the node.",
+      "meaning": "The other nodes say no because of: node selector on 3 node(s).",
+      "appliesTo": [
+        "cluster-autoscaler",
+        "karpenter"
+      ],
+      "confidence": "medium",
+      "evidence": [
+        {
+          "object": "Pod/ml/infer-0",
+          "field": "requests (containers, init containers, overhead)",
+          "value": "cpu=2500m memory=8Gi"
+        },
+        {
+          "object": "Pod/ml/infer-0",
+          "field": ".spec.nodeSelector",
+          "value": "accelerator=gpu-a"
+        },
+        {
+          "object": "Node/node-a",
+          "field": "fit check",
+          "value": "node selector accelerator=gpu-a not matched"
+        },
+        {
+          "object": "Node/node-b",
+          "field": "fit check",
+          "value": "node selector accelerator=gpu-a not matched"
+        },
+        {
+          "object": "Node/node-d",
+          "field": "fit check",
+          "value": "node selector accelerator=gpu-a not matched"
+        }
+      ],
+      "alternatives": [
+        "Karpenter may replace this node with a cheaper one instead of deleting it; this rule only checks moving pods onto existing nodes.",
+        "Requests may be larger than real usage; right-sizing (for example with VPA recommendations) could create room."
+      ],
+      "unknowns": [
+        "Placement is a first-fit estimate by requests, largest pod first; a different packing might succeed.",
+        "Volume zones, pod priority and preemption were not evaluated."
+      ]
+    },
+    {
+      "id": "F5",
+      "rule": "karpenter-do-not-disrupt",
+      "layer": "policy",
+      "severity": "blocker",
+      "subject": "Pod/shop/worker-5c6b7-q8w2e",
+      "claim": "The pod is annotated karpenter.sh/do-not-disrupt=true. Karpenter will not voluntarily disrupt a node running it, so the node stays until the pod finishes or the annotation is removed.",
+      "appliesTo": [
+        "karpenter"
+      ],
+      "confidence": "high",
+      "evidence": [
+        {
+          "object": "Pod/shop/worker-5c6b7-q8w2e",
+          "field": ".metadata.annotations[\"karpenter.sh/do-not-disrupt\"]",
+          "value": "true"
+        }
+      ],
+      "alternatives": [
+        "If this node is not managed by Karpenter, the annotation has no effect."
+      ]
+    },
+    {
+      "id": "F6",
+      "rule": "autoscaler-event",
+      "layer": "nodes",
+      "severity": "possible-blocker",
+      "subject": "Node/node-c",
+      "claim": "karpenter reported DisruptionBlocked: Pod \"shop/worker-5c6b7-q8w2e\" has \"karpenter.sh/do-not-disrupt\" annotation (seen 12 times)",
+      "meaning": "A karpenter.sh/do-not-disrupt annotation blocks voluntary disruption.",
+      "appliesTo": [
+        "karpenter"
+      ],
+      "confidence": "high",
+      "evidence": [
+        {
+          "object": "Event/default/node-c.1801a2b3c4d5e6f7",
+          "field": ".reason, .message",
+          "value": "DisruptionBlocked: Pod \"shop/worker-5c6b7-q8w2e\" has \"karpenter.sh/do-not-disrupt\" annotation",
+          "time": "2026-11-21T03:00:00Z"
+        }
+      ],
+      "unknowns": [
+        "Events expire (one hour by default) and may describe an earlier state; compare the timestamp with when the snapshot was taken."
+      ]
+    },
+    {
+      "id": "F7",
+      "rule": "utilization-above-threshold",
+      "layer": "nodes",
+      "severity": "possible-blocker",
+      "subject": "Node/node-c",
+      "claim": "Pods on this node request 78% of its CPU and 57% of its memory. Cluster Autoscaler only considers nodes below --scale-down-utilization-threshold (0.5 by default), so it may never evaluate this node for removal.",
+      "appliesTo": [
+        "cluster-autoscaler"
+      ],
+      "confidence": "medium",
+      "evidence": [
+        {
+          "object": "Node/node-c",
+          "field": ".status.allocatable",
+          "value": "cpu=4 memory=16Gi"
+        },
+        {
+          "object": "Node/node-c",
+          "field": "sum of pod requests (including DaemonSets)",
+          "value": "cpu=3100m memory=9344Mi"
+        }
+      ],
+      "alternatives": [
+        "Karpenter consolidation does not use this threshold; it compares the cost of deleting or replacing the node."
+      ],
+      "unknowns": [
+        "The configured threshold and --ignore-daemonsets-utilization are not in the snapshot."
+      ]
+    }
+  ],
+  "dataNotes": [
+    "No node autoscaler was found in the snapshot (no Karpenter labels on nodes, no Cluster Autoscaler pods or events). Findings for both are kept, because managed offerings run Cluster Autoscaler outside the cluster. If no autoscaler runs, nothing removes nodes automatically: rerun with --node-autoscaler none to drop autoscaler-specific findings."
+  ],
+  "limitations": [
+    "Snapshot heuristic, not a scheduler simulation: placement checks cover node selectors, required node affinity, taints, required pod (anti-)affinity, topology spread and host ports, but not volume zones, priorities, preemption or preferred rules.",
+    "Autoscaler settings are read where the cluster exposes them (Karpenter NodePools and NodeClaims), not Cluster Autoscaler flags or node group minimums.",
+    "One point in time: PDB status, replica counts and events change.",
+    "Packing is measured with resource requests, not real usage.",
+    "Pod size is judged only where a VPA recommendation exists; other workloads are unknowns.",
+    "Read-only: KubeShrink never modifies a cluster."
+  ]
+}

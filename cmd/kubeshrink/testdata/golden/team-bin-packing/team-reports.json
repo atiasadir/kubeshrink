@@ -1,0 +1,153 @@
+{
+  "namespace": "reports",
+  "summary": "reports runs 2 pod(s) on 2 node(s) and requests 2.0 CPU, 4.0Gi memory. Its share of the idle capacity on those nodes is 3.0 CPU, 16.5Gi memory, so its packing is 40% CPU and 20% memory. 0 blocker(s), 1 possible blocker(s), 1 warning(s), 1 context finding(s).",
+  "pods": 2,
+  "requested": {
+    "milliCPU": 2000,
+    "memoryBytes": 4294967296
+  },
+  "idleShare": {
+    "milliCPU": 3000,
+    "memoryBytes": 17695265259.52
+  },
+  "packingCPU": 0.4,
+  "packingMemory": 0.1953125,
+  "nodes": [
+    {
+      "node": "general-a",
+      "pool": "general",
+      "requested": {
+        "milliCPU": 1000,
+        "memoryBytes": 2147483648
+      },
+      "idleShare": {
+        "milliCPU": 1500,
+        "memoryBytes": 8847632629.76
+      },
+      "nodePackingCPU": 0.4,
+      "nodePackingMemory": 0.1953125,
+      "alone": false,
+      "verdict": "blocked"
+    },
+    {
+      "node": "general-b",
+      "pool": "general",
+      "requested": {
+        "milliCPU": 1000,
+        "memoryBytes": 2147483648
+      },
+      "idleShare": {
+        "milliCPU": 1500,
+        "memoryBytes": 8847632629.76
+      },
+      "nodePackingCPU": 0.4,
+      "nodePackingMemory": 0.1953125,
+      "alone": false,
+      "verdict": "blocked"
+    }
+  ],
+  "findings": [
+    {
+      "id": "F1",
+      "rule": "replica-floor",
+      "layer": "replicas",
+      "severity": "context",
+      "subject": "Deployment/reports/worker",
+      "claim": "The workload sits at its KEDA floor (minReplicaCount=2, replicas=2). KEDA will not scale it lower, so its 2 pod(s) keep holding 2.0 CPU and 4.0Gi memory even when idle.",
+      "meaning": "These pods exist because of configuration, not load. Lowering the minimum (or scaling to zero off-hours) is what frees this capacity.",
+      "confidence": "high",
+      "evidence": [
+        {
+          "object": "Pod/reports/worker-5c8b-a",
+          "field": ".metadata.ownerReferences (controller)",
+          "value": "ReplicaSet/worker-5c8b"
+        },
+        {
+          "object": "ReplicaSet/reports/worker-5c8b",
+          "field": ".metadata.ownerReferences (controller)",
+          "value": "Deployment/worker"
+        },
+        {
+          "object": "Deployment/reports/worker",
+          "field": ".spec.replicas",
+          "value": "2"
+        },
+        {
+          "object": "ScaledObject/reports/worker",
+          "field": ".spec.minReplicaCount",
+          "value": "2"
+        }
+      ]
+    },
+    {
+      "id": "F2",
+      "rule": "vpa-hpa-conflict",
+      "layer": "requests",
+      "severity": "warning",
+      "subject": "Deployment/reports/worker",
+      "claim": "HPA keda-hpa-worker scales this workload on cpu utilization while VPA worker (mode Auto) changes the cpu requests. Utilization is usage divided by requests, so every resize moves the HPA's signal and the two can work against each other.",
+      "meaning": "The VPA project lists this combination as a known limitation: https://github.com/kubernetes/autoscaler/tree/master/vertical-pod-autoscaler#known-limitations",
+      "confidence": "high",
+      "evidence": [
+        {
+          "object": "HorizontalPodAutoscaler/reports/keda-hpa-worker",
+          "field": ".spec.metrics[0].resource.name",
+          "value": "cpu"
+        },
+        {
+          "object": "VerticalPodAutoscaler/reports/worker",
+          "field": ".spec.updatePolicy.updateMode",
+          "value": "Auto"
+        }
+      ],
+      "alternatives": [
+        "Scaling the HPA on custom or external metrics, with the VPA on CPU and memory, is the supported combination."
+      ]
+    },
+    {
+      "id": "F3",
+      "rule": "autoscaler-event",
+      "layer": "nodes",
+      "severity": "possible-blocker",
+      "subject": "Node/general-b",
+      "claim": "karpenter reported Unconsolidatable: Can't replace with a cheaper node (seen 6 times)",
+      "meaning": "Karpenter considered this node and found no cheaper replacement. Karpenter tries deleting a node before replacing it, so this usually also means its own simulation could not fit all of the node's pods onto the other nodes.",
+      "appliesTo": [
+        "karpenter"
+      ],
+      "confidence": "high",
+      "evidence": [
+        {
+          "object": "Event/default/general-b.18a1c2",
+          "field": ".reason, .message",
+          "value": "Unconsolidatable: Can't replace with a cheaper node",
+          "time": "2026-11-21T02:55:00Z"
+        },
+        {
+          "object": "Event/default/general-b-x2.18a1c3",
+          "field": ".reason, .message",
+          "value": "Unconsolidatable: Can't replace with a cheaper node",
+          "time": "2026-11-21T02:55:00Z"
+        }
+      ],
+      "unknowns": [
+        "Last seen 5m0s before the snapshot was taken."
+      ]
+    }
+  ],
+  "otherTenantFindings": 2,
+  "vpaCoverage": {
+    "workloads": 1,
+    "withVPA": 1,
+    "withRecommendation": 1,
+    "oversized": 0
+  },
+  "limitations": [
+    "Snapshot heuristic, not a scheduler simulation: placement checks cover node selectors, required node affinity, taints, required pod (anti-)affinity, topology spread and host ports, but not volume zones, priorities, preemption or preferred rules.",
+    "Autoscaler settings are read where the cluster exposes them (Karpenter NodePools and NodeClaims), not Cluster Autoscaler flags or node group minimums.",
+    "One point in time: PDB status, replica counts and events change.",
+    "Packing is measured with resource requests, not real usage.",
+    "Pod size is judged only where a VPA recommendation exists; other workloads are unknowns.",
+    "Read-only: KubeShrink never modifies a cluster."
+  ]
+}

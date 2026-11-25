@@ -1,0 +1,94 @@
+{
+  "namespace": "data",
+  "summary": "data runs 1 pod(s) on 1 node(s) and requests 1.0 CPU, 4.0Gi memory. Its share of the idle capacity on those nodes is 1.5 CPU, 8.5Gi memory, so its packing is 40% CPU and 32% memory. 1 blocker(s), 0 possible blocker(s), 0 warning(s), 0 context finding(s).",
+  "pods": 1,
+  "requested": {
+    "milliCPU": 1000,
+    "memoryBytes": 4294967296
+  },
+  "idleShare": {
+    "milliCPU": 1500,
+    "memoryBytes": 9113711091.512196
+  },
+  "packingCPU": 0.4,
+  "packingMemory": 0.3203125,
+  "nodes": [
+    {
+      "node": "node-a",
+      "pool": "(no pool label)",
+      "requested": {
+        "milliCPU": 1000,
+        "memoryBytes": 4294967296
+      },
+      "idleShare": {
+        "milliCPU": 1500,
+        "memoryBytes": 9113711091.512196
+      },
+      "nodePackingCPU": 0.4,
+      "nodePackingMemory": 0.3203125,
+      "alone": false,
+      "verdict": "blocked"
+    }
+  ],
+  "findings": [
+    {
+      "id": "F1",
+      "rule": "pdb-zero-disruptions",
+      "layer": "policy",
+      "severity": "blocker",
+      "subject": "Pod/data/db-0",
+      "claim": "PodDisruptionBudget db-pdb currently allows 0 disruptions, so this pod cannot be evicted and the node cannot be drained.",
+      "appliesTo": [
+        "cluster-autoscaler",
+        "karpenter"
+      ],
+      "confidence": "high",
+      "evidence": [
+        {
+          "object": "PodDisruptionBudget/data/db-pdb",
+          "field": ".status.disruptionsAllowed",
+          "value": "0"
+        },
+        {
+          "object": "PodDisruptionBudget/data/db-pdb",
+          "field": ".status.currentHealthy / .status.desiredHealthy",
+          "value": "1 / 1"
+        },
+        {
+          "object": "PodDisruptionBudget/data/db-pdb",
+          "field": ".spec.minAvailable",
+          "value": "1"
+        },
+        {
+          "object": "Pod/data/db-0",
+          "field": ".metadata.labels",
+          "value": "app=db"
+        }
+      ],
+      "alternatives": [
+        "Structural: every healthy pod is needed to satisfy the budget (e.g. minAvailable equals the replica count, or maxUnavailable is 0). It stays at zero until the budget or the replica count changes."
+      ],
+      "unknowns": [
+        "The snapshot is one moment; disruptionsAllowed changes as pods become ready or unready."
+      ]
+    }
+  ],
+  "otherTenantFindings": 0,
+  "vpaCoverage": {
+    "workloads": 1,
+    "withVPA": 0,
+    "withRecommendation": 0,
+    "oversized": 0
+  },
+  "dataNotes": [
+    "No node autoscaler was found in the snapshot (no Karpenter labels on nodes, no Cluster Autoscaler pods or events). Findings for both are kept, because managed offerings run Cluster Autoscaler outside the cluster. If no autoscaler runs, nothing removes nodes automatically: rerun with --node-autoscaler none to drop autoscaler-specific findings."
+  ],
+  "limitations": [
+    "Snapshot heuristic, not a scheduler simulation: placement checks cover node selectors, required node affinity, taints, required pod (anti-)affinity, topology spread and host ports, but not volume zones, priorities, preemption or preferred rules.",
+    "Autoscaler settings are read where the cluster exposes them (Karpenter NodePools and NodeClaims), not Cluster Autoscaler flags or node group minimums.",
+    "One point in time: PDB status, replica counts and events change.",
+    "Packing is measured with resource requests, not real usage.",
+    "Pod size is judged only where a VPA recommendation exists; other workloads are unknowns.",
+    "Read-only: KubeShrink never modifies a cluster."
+  ]
+}

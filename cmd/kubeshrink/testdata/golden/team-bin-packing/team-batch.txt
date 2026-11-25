@@ -1,0 +1,28 @@
+Namespace batch
+batch runs 1 pod(s) on 1 node(s) and requests 250m CPU, 0Mi memory. Its share of the idle capacity on those nodes is 926m CPU, 0Mi memory, so its packing is 21% CPU and 0% memory. 0 blocker(s), 0 possible blocker(s), 0 warning(s), 1 context finding(s).
+
+Nodes it uses (idle share: its part of each node's unrequested capacity, split by requests)
+  NODE       POOL     REQUESTED      IDLE SHARE     NODE PACKING CPU/MEM  ALONE  VERDICT
+  general-c  general  250m CPU, 0Mi  926m CPU, 0Mi  21% / 7%              no     blocked
+
+== NODES: Will the node autoscaler remove or replace the node?
+
+[F1] CONTEXT  karpenter-not-consolidatable-yet  Node/general-c
+    Karpenter has not marked this node consolidatable yet, so it does not consider removing or replacing it. NodePool general waits consolidateAfter (1m) after pods were last added to or removed from a node.
+    Applies to: karpenter
+    Confidence: medium
+    Evidence:
+      - NodeClaim/general-c-x3 .status.conditions[Consolidatable].status = False (at 2026-11-21T02:59:30Z)
+      - NodePool/general .spec.disruption.consolidateAfter = 1m
+    Unknowns:
+      - Frequent pod churn on the node keeps restarting this wait.
+
+1 more finding(s) on these nodes are about other namespaces' pods; run explain node for the full picture.
+
+Limitations:
+  - Snapshot heuristic, not a scheduler simulation: placement checks cover node selectors, required node affinity, taints, required pod (anti-)affinity, topology spread and host ports, but not volume zones, priorities, preemption or preferred rules.
+  - Autoscaler settings are read where the cluster exposes them (Karpenter NodePools and NodeClaims), not Cluster Autoscaler flags or node group minimums.
+  - One point in time: PDB status, replica counts and events change.
+  - Packing is measured with resource requests, not real usage.
+  - Pod size is judged only where a VPA recommendation exists; other workloads are unknowns.
+  - Read-only: KubeShrink never modifies a cluster.

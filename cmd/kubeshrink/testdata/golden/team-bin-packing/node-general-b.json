@@ -1,0 +1,277 @@
+{
+  "node": "general-b",
+  "pool": "general",
+  "managedBy": "karpenter",
+  "verdict": "blocked",
+  "summary": "1 blocker(s), 1 possible blocker(s), 3 warning(s), 2 context finding(s); 2 pod(s) would need to move.",
+  "allocatable": {
+    "milliCPU": 4000,
+    "memoryBytes": 17179869184,
+    "pods": 110
+  },
+  "requested": {
+    "milliCPU": 1600,
+    "memoryBytes": 3355443200,
+    "pods": 3
+  },
+  "podsToMove": [
+    "Pod/checkout/api-7d9f-b",
+    "Pod/reports/worker-5c8b-b"
+  ],
+  "ignoredPods": [
+    {
+      "pod": "Pod/monitoring/node-exporter-general-b",
+      "reason": "DaemonSet pod; autoscalers do not need to reschedule it"
+    }
+  ],
+  "findings": [
+    {
+      "id": "F1",
+      "rule": "replica-floor",
+      "layer": "replicas",
+      "severity": "context",
+      "subject": "Deployment/checkout/api",
+      "claim": "The workload sits at its HPA floor (minReplicas=3, replicas=3). HPA will not scale it lower, so its 3 pod(s) keep holding 1.5 CPU and 3.0Gi memory even when idle.",
+      "meaning": "These pods exist because of configuration, not load. Lowering the minimum (or scaling to zero off-hours) is what frees this capacity.",
+      "confidence": "high",
+      "evidence": [
+        {
+          "object": "Pod/checkout/api-7d9f-b",
+          "field": ".metadata.ownerReferences (controller)",
+          "value": "ReplicaSet/api-7d9f"
+        },
+        {
+          "object": "ReplicaSet/checkout/api-7d9f",
+          "field": ".metadata.ownerReferences (controller)",
+          "value": "Deployment/api"
+        },
+        {
+          "object": "Deployment/checkout/api",
+          "field": ".spec.replicas",
+          "value": "3"
+        },
+        {
+          "object": "HorizontalPodAutoscaler/checkout/api",
+          "field": ".spec.minReplicas",
+          "value": "3"
+        }
+      ]
+    },
+    {
+      "id": "F2",
+      "rule": "replica-floor",
+      "layer": "replicas",
+      "severity": "context",
+      "subject": "Deployment/reports/worker",
+      "claim": "The workload sits at its KEDA floor (minReplicaCount=2, replicas=2). KEDA will not scale it lower, so its 2 pod(s) keep holding 2.0 CPU and 4.0Gi memory even when idle.",
+      "meaning": "These pods exist because of configuration, not load. Lowering the minimum (or scaling to zero off-hours) is what frees this capacity.",
+      "confidence": "high",
+      "evidence": [
+        {
+          "object": "Pod/reports/worker-5c8b-b",
+          "field": ".metadata.ownerReferences (controller)",
+          "value": "ReplicaSet/worker-5c8b"
+        },
+        {
+          "object": "ReplicaSet/reports/worker-5c8b",
+          "field": ".metadata.ownerReferences (controller)",
+          "value": "Deployment/worker"
+        },
+        {
+          "object": "Deployment/reports/worker",
+          "field": ".spec.replicas",
+          "value": "2"
+        },
+        {
+          "object": "ScaledObject/reports/worker",
+          "field": ".spec.minReplicaCount",
+          "value": "2"
+        }
+      ]
+    },
+    {
+      "id": "F3",
+      "rule": "requests-above-vpa",
+      "layer": "requests",
+      "severity": "warning",
+      "subject": "Deployment/checkout/api",
+      "claim": "Pods of this workload request more than VPA api recommends: 2 request(s) above its upper bound and 0 more than 25% above its target. The VPA is in mode Off, so it only recommends.",
+      "meaning": "Each pod reserves more than it is likely to use, so fewer pods fit on a node and nodes look full on paper.",
+      "confidence": "high",
+      "evidence": [
+        {
+          "object": "Pod/checkout/api-7d9f-b",
+          "field": ".spec.containers[api].resources.requests.cpu",
+          "value": "500m"
+        },
+        {
+          "object": "VerticalPodAutoscaler/checkout/api",
+          "field": ".status.recommendation.containerRecommendations[api].upperBound.cpu",
+          "value": "300m"
+        },
+        {
+          "object": "Pod/checkout/api-7d9f-b",
+          "field": ".spec.containers[api].resources.requests.memory",
+          "value": "1Gi"
+        },
+        {
+          "object": "VerticalPodAutoscaler/checkout/api",
+          "field": ".status.recommendation.containerRecommendations[api].upperBound.memory",
+          "value": "768Mi"
+        },
+        {
+          "object": "VerticalPodAutoscaler/checkout/api",
+          "field": ".spec.updatePolicy.updateMode",
+          "value": "Off"
+        }
+      ],
+      "unknowns": [
+        "VPA recommends from recent usage; a workload with rare peaks may still need its headroom."
+      ]
+    },
+    {
+      "id": "F4",
+      "rule": "vpa-not-applied",
+      "layer": "requests",
+      "severity": "warning",
+      "subject": "Deployment/checkout/api",
+      "claim": "VPA api recommends different requests, but its update mode is Off, so nothing applies them.",
+      "meaning": "The right size is known but not applied.",
+      "confidence": "high",
+      "evidence": [
+        {
+          "object": "VerticalPodAutoscaler/checkout/api",
+          "field": ".spec.updatePolicy.updateMode",
+          "value": "Off"
+        },
+        {
+          "object": "Pod/checkout/api-7d9f-b",
+          "field": ".spec.containers[api].resources.requests.cpu",
+          "value": "500m"
+        },
+        {
+          "object": "VerticalPodAutoscaler/checkout/api",
+          "field": ".status.recommendation.containerRecommendations[api].target.cpu",
+          "value": "150m"
+        },
+        {
+          "object": "Pod/checkout/api-7d9f-b",
+          "field": ".spec.containers[api].resources.requests.memory",
+          "value": "1Gi"
+        },
+        {
+          "object": "VerticalPodAutoscaler/checkout/api",
+          "field": ".status.recommendation.containerRecommendations[api].target.memory",
+          "value": "512Mi"
+        }
+      ]
+    },
+    {
+      "id": "F5",
+      "rule": "vpa-hpa-conflict",
+      "layer": "requests",
+      "severity": "warning",
+      "subject": "Deployment/reports/worker",
+      "claim": "HPA keda-hpa-worker scales this workload on cpu utilization while VPA worker (mode Auto) changes the cpu requests. Utilization is usage divided by requests, so every resize moves the HPA's signal and the two can work against each other.",
+      "meaning": "The VPA project lists this combination as a known limitation: https://github.com/kubernetes/autoscaler/tree/master/vertical-pod-autoscaler#known-limitations",
+      "confidence": "high",
+      "evidence": [
+        {
+          "object": "HorizontalPodAutoscaler/reports/keda-hpa-worker",
+          "field": ".spec.metrics[0].resource.name",
+          "value": "cpu"
+        },
+        {
+          "object": "VerticalPodAutoscaler/reports/worker",
+          "field": ".spec.updatePolicy.updateMode",
+          "value": "Auto"
+        }
+      ],
+      "alternatives": [
+        "Scaling the HPA on custom or external metrics, with the VPA on CPU and memory, is the supported combination."
+      ]
+    },
+    {
+      "id": "F6",
+      "rule": "no-room-elsewhere",
+      "layer": "policy",
+      "severity": "blocker",
+      "subject": "Pod/checkout/api-7d9f-b",
+      "claim": "None of the 3 other schedulable node(s) in the snapshot can take this pod. Draining this node would leave it Pending, so autoscalers keep the node.",
+      "meaning": "The other nodes say no because of: pod anti-affinity on 2 node(s), taint on 1 node(s).",
+      "appliesTo": [
+        "cluster-autoscaler",
+        "karpenter"
+      ],
+      "confidence": "medium",
+      "evidence": [
+        {
+          "object": "Pod/checkout/api-7d9f-b",
+          "field": "requests (containers, init containers, overhead)",
+          "value": "cpu=500m memory=1Gi"
+        },
+        {
+          "object": "Node/general-a",
+          "field": "fit check",
+          "value": "pod anti-affinity on kubernetes.io/hostname: Pod/checkout/api-7d9f-a already runs there"
+        },
+        {
+          "object": "Node/general-c",
+          "field": "fit check",
+          "value": "pod anti-affinity on kubernetes.io/hostname: Pod/checkout/api-7d9f-c already runs there"
+        },
+        {
+          "object": "Node/ml-a",
+          "field": "fit check",
+          "value": "taint dedicated=ml:NoSchedule not tolerated"
+        }
+      ],
+      "alternatives": [
+        "Karpenter may replace this node with a cheaper one instead of deleting it; this rule only checks moving pods onto existing nodes.",
+        "Requests may be larger than real usage; right-sizing (for example with VPA recommendations) could create room."
+      ],
+      "unknowns": [
+        "Placement is a first-fit estimate by requests, largest pod first; a different packing might succeed.",
+        "Volume zones, pod priority and preemption were not evaluated."
+      ]
+    },
+    {
+      "id": "F7",
+      "rule": "autoscaler-event",
+      "layer": "nodes",
+      "severity": "possible-blocker",
+      "subject": "Node/general-b",
+      "claim": "karpenter reported Unconsolidatable: Can't replace with a cheaper node (seen 6 times)",
+      "meaning": "Karpenter considered this node and found no cheaper replacement. Karpenter tries deleting a node before replacing it, so this usually also means its own simulation could not fit all of the node's pods onto the other nodes.",
+      "appliesTo": [
+        "karpenter"
+      ],
+      "confidence": "high",
+      "evidence": [
+        {
+          "object": "Event/default/general-b.18a1c2",
+          "field": ".reason, .message",
+          "value": "Unconsolidatable: Can't replace with a cheaper node",
+          "time": "2026-11-21T02:55:00Z"
+        },
+        {
+          "object": "Event/default/general-b-x2.18a1c3",
+          "field": ".reason, .message",
+          "value": "Unconsolidatable: Can't replace with a cheaper node",
+          "time": "2026-11-21T02:55:00Z"
+        }
+      ],
+      "unknowns": [
+        "Last seen 5m0s before the snapshot was taken."
+      ]
+    }
+  ],
+  "limitations": [
+    "Snapshot heuristic, not a scheduler simulation: placement checks cover node selectors, required node affinity, taints, required pod (anti-)affinity, topology spread and host ports, but not volume zones, priorities, preemption or preferred rules.",
+    "Autoscaler settings are read where the cluster exposes them (Karpenter NodePools and NodeClaims), not Cluster Autoscaler flags or node group minimums.",
+    "One point in time: PDB status, replica counts and events change.",
+    "Packing is measured with resource requests, not real usage.",
+    "Pod size is judged only where a VPA recommendation exists; other workloads are unknowns.",
+    "Read-only: KubeShrink never modifies a cluster."
+  ]
+}
