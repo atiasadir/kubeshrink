@@ -1,0 +1,97 @@
+Node general-a: BLOCKED
+Pool: general
+Managed by: karpenter
+Requested: 1.6 CPU, 3.1Gi of 4.0 CPU, 16.0Gi allocatable
+1 blocker(s), 0 possible blocker(s), 3 warning(s), 2 context finding(s); 2 pod(s) would need to move.
+
+Pods that would need to move (2):
+  - Pod/checkout/api-7d9f-a
+  - Pod/reports/worker-5c8b-a
+
+Ignored pods:
+  - Pod/monitoring/node-exporter-general-a (DaemonSet pod; autoscalers do not need to reschedule it)
+
+== REPLICAS: Why do these pods exist?
+
+[F1] CONTEXT  replica-floor  Deployment/checkout/api
+    The workload sits at its HPA floor (minReplicas=3, replicas=3). HPA will not scale it lower, so its 3 pod(s) keep holding 1.5 CPU and 3.0Gi memory even when idle.
+    What it means: These pods exist because of configuration, not load. Lowering the minimum (or scaling to zero off-hours) is what frees this capacity.
+    Confidence: high
+    Evidence:
+      - Pod/checkout/api-7d9f-a .metadata.ownerReferences (controller) = ReplicaSet/api-7d9f
+      - ReplicaSet/checkout/api-7d9f .metadata.ownerReferences (controller) = Deployment/api
+      - Deployment/checkout/api .spec.replicas = 3
+      - HorizontalPodAutoscaler/checkout/api .spec.minReplicas = 3
+
+[F2] CONTEXT  replica-floor  Deployment/reports/worker
+    The workload sits at its KEDA floor (minReplicaCount=2, replicas=2). KEDA will not scale it lower, so its 2 pod(s) keep holding 2.0 CPU and 4.0Gi memory even when idle.
+    What it means: These pods exist because of configuration, not load. Lowering the minimum (or scaling to zero off-hours) is what frees this capacity.
+    Confidence: high
+    Evidence:
+      - Pod/reports/worker-5c8b-a .metadata.ownerReferences (controller) = ReplicaSet/worker-5c8b
+      - ReplicaSet/reports/worker-5c8b .metadata.ownerReferences (controller) = Deployment/worker
+      - Deployment/reports/worker .spec.replicas = 2
+      - ScaledObject/reports/worker .spec.minReplicaCount = 2
+
+== REQUESTS: How big is each pod?
+
+[F3] WARNING  requests-above-vpa  Deployment/checkout/api
+    Pods of this workload request more than VPA api recommends: 2 request(s) above its upper bound and 0 more than 25% above its target. The VPA is in mode Off, so it only recommends.
+    What it means: Each pod reserves more than it is likely to use, so fewer pods fit on a node and nodes look full on paper.
+    Confidence: high
+    Evidence:
+      - Pod/checkout/api-7d9f-a .spec.containers[api].resources.requests.cpu = 500m
+      - VerticalPodAutoscaler/checkout/api .status.recommendation.containerRecommendations[api].upperBound.cpu = 300m
+      - Pod/checkout/api-7d9f-a .spec.containers[api].resources.requests.memory = 1Gi
+      - VerticalPodAutoscaler/checkout/api .status.recommendation.containerRecommendations[api].upperBound.memory = 768Mi
+      - VerticalPodAutoscaler/checkout/api .spec.updatePolicy.updateMode = Off
+    Unknowns:
+      - VPA recommends from recent usage; a workload with rare peaks may still need its headroom.
+
+[F4] WARNING  vpa-not-applied  Deployment/checkout/api
+    VPA api recommends different requests, but its update mode is Off, so nothing applies them.
+    What it means: The right size is known but not applied.
+    Confidence: high
+    Evidence:
+      - VerticalPodAutoscaler/checkout/api .spec.updatePolicy.updateMode = Off
+      - Pod/checkout/api-7d9f-a .spec.containers[api].resources.requests.cpu = 500m
+      - VerticalPodAutoscaler/checkout/api .status.recommendation.containerRecommendations[api].target.cpu = 150m
+      - Pod/checkout/api-7d9f-a .spec.containers[api].resources.requests.memory = 1Gi
+      - VerticalPodAutoscaler/checkout/api .status.recommendation.containerRecommendations[api].target.memory = 512Mi
+
+[F5] WARNING  vpa-hpa-conflict  Deployment/reports/worker
+    HPA keda-hpa-worker scales this workload on cpu utilization while VPA worker (mode Auto) changes the cpu requests. Utilization is usage divided by requests, so every resize moves the HPA's signal and the two can work against each other.
+    What it means: The VPA project lists this combination as a known limitation: https://github.com/kubernetes/autoscaler/tree/master/vertical-pod-autoscaler#known-limitations
+    Confidence: high
+    Evidence:
+      - HorizontalPodAutoscaler/reports/keda-hpa-worker .spec.metrics[0].resource.name = cpu
+      - VerticalPodAutoscaler/reports/worker .spec.updatePolicy.updateMode = Auto
+    Other explanations:
+      - Scaling the HPA on custom or external metrics, with the VPA on CPU and memory, is the supported combination.
+
+== POLICY: Where may they run, and may they move?
+
+[F6] BLOCKER  no-room-elsewhere  Pod/checkout/api-7d9f-a
+    None of the 3 other schedulable node(s) in the snapshot can take this pod. Draining this node would leave it Pending, so autoscalers keep the node.
+    What it means: The other nodes say no because of: pod anti-affinity on 2 node(s), taint on 1 node(s).
+    Applies to: cluster-autoscaler, karpenter
+    Confidence: medium
+    Evidence:
+      - Pod/checkout/api-7d9f-a requests (containers, init containers, overhead) = cpu=500m memory=1Gi
+      - Node/general-b fit check = pod anti-affinity on kubernetes.io/hostname: Pod/checkout/api-7d9f-b already runs there
+      - Node/general-c fit check = pod anti-affinity on kubernetes.io/hostname: Pod/checkout/api-7d9f-c already runs there
+      - Node/ml-a fit check = taint dedicated=ml:NoSchedule not tolerated
+    Other explanations:
+      - Karpenter may replace this node with a cheaper one instead of deleting it; this rule only checks moving pods onto existing nodes.
+      - Requests may be larger than real usage; right-sizing (for example with VPA recommendations) could create room.
+    Unknowns:
+      - Placement is a first-fit estimate by requests, largest pod first; a different packing might succeed.
+      - Volume zones, pod priority and preemption were not evaluated.
+
+Limitations:
+  - Snapshot heuristic, not a scheduler simulation: placement checks cover node selectors, required node affinity, taints, required pod (anti-)affinity, topology spread and host ports, but not volume zones, priorities, preemption or preferred rules.
+  - Autoscaler settings are read where the cluster exposes them (Karpenter NodePools and NodeClaims), not Cluster Autoscaler flags or node group minimums.
+  - One point in time: PDB status, replica counts and events change.
+  - Packing is measured with resource requests, not real usage.
+  - Pod size is judged only where a VPA recommendation exists; other workloads are unknowns.
+  - Read-only: KubeShrink never modifies a cluster.

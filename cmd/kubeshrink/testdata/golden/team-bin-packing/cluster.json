@@ -1,0 +1,230 @@
+{
+  "summary": "4 node(s) run; by requests alone their pods would fit on 2. Pods request 31% of allocatable CPU and 19% of memory. Verdicts: 4 blocked, 0 possibly blocked, 0 with no blocker found.",
+  "takenAt": "2026-11-21T03:00:00Z",
+  "serverVersion": "v1.31.2",
+  "nodes": 4,
+  "nodesNeeded": 2,
+  "allocatable": {
+    "milliCPU": 20000,
+    "memoryBytes": 85899345920
+  },
+  "requested": {
+    "milliCPU": 6150,
+    "memoryBytes": 16642998272
+  },
+  "packingCPU": 0.3075,
+  "packingMemory": 0.19375,
+  "pools": [
+    {
+      "pool": "general",
+      "label": "karpenter.sh/nodepool",
+      "nodes": 3,
+      "emptyNodes": 0,
+      "allocatable": {
+        "milliCPU": 12000,
+        "memoryBytes": 51539607552
+      },
+      "requested": {
+        "milliCPU": 4050,
+        "memoryBytes": 7918845952
+      },
+      "minNodes": 1
+    },
+    {
+      "pool": "ml",
+      "label": "karpenter.sh/nodepool",
+      "nodes": 1,
+      "emptyNodes": 0,
+      "allocatable": {
+        "milliCPU": 8000,
+        "memoryBytes": 34359738368
+      },
+      "requested": {
+        "milliCPU": 2100,
+        "memoryBytes": 8724152320
+      },
+      "minNodes": 1
+    }
+  ],
+  "nodePools": [
+    {
+      "name": "general",
+      "nodes": 3,
+      "settings": "consolidationPolicy=WhenEmptyOrUnderutilized consolidateAfter=1m budgets=10% limits=cpu=64"
+    },
+    {
+      "name": "ml",
+      "nodes": 1,
+      "settings": "consolidationPolicy=WhenEmpty consolidateAfter=30s"
+    }
+  ],
+  "managedBy": {
+    "karpenter": 4
+  },
+  "verdicts": {
+    "blocked": 4
+  },
+  "topReasons": [
+    {
+      "rule": "no-room-elsewhere",
+      "layer": "policy",
+      "title": "No other node can take a pod",
+      "severity": "blocker",
+      "nodes": [
+        "general-a",
+        "general-b",
+        "general-c",
+        "ml-a"
+      ],
+      "example": "The other nodes say no because of: pod anti-affinity on 2 node(s), taint on 1 node(s)."
+    },
+    {
+      "rule": "karpenter-consolidation-policy",
+      "layer": "nodes",
+      "title": "NodePool only consolidates empty nodes",
+      "severity": "blocker",
+      "nodes": [
+        "ml-a"
+      ],
+      "example": "NodePool ml only consolidates empty nodes (consolidationPolicy WhenEmpty). This node runs 1 pod(s) that would need to move, so Karpenter will not remove or replace it for being underused."
+    },
+    {
+      "rule": "autoscaler-event",
+      "layer": "nodes",
+      "title": "What the autoscaler itself reported",
+      "severity": "possible-blocker",
+      "nodes": [
+        "general-b"
+      ],
+      "example": "Karpenter considered this node and found no cheaper replacement. Karpenter tries deleting a node before replacing it, so this usually also means its own simulation could not fit all of the node's pods onto the other nodes."
+    }
+  ],
+  "replicaFloors": [
+    {
+      "controller": "hpa",
+      "min": 3,
+      "workloads": 1,
+      "pods": 3,
+      "requested": {
+        "milliCPU": 1500,
+        "memoryBytes": 3221225472,
+        "pods": 3
+      }
+    },
+    {
+      "controller": "keda",
+      "min": 2,
+      "workloads": 1,
+      "pods": 2,
+      "requested": {
+        "milliCPU": 2000,
+        "memoryBytes": 4294967296,
+        "pods": 2
+      }
+    }
+  ],
+  "size": {
+    "vpaCoverage": {
+      "workloads": 3,
+      "withVPA": 3,
+      "withRecommendation": 3,
+      "oversized": 1
+    },
+    "aboveTargets": {
+      "milliCPU": 1250,
+      "memoryBytes": 2040528896
+    },
+    "containersWithTargets": 6,
+    "nodesNeededAtTargets": 2
+  },
+  "namespaces": [
+    {
+      "namespace": "ml",
+      "pods": 1,
+      "nodes": 1,
+      "requested": {
+        "milliCPU": 2000,
+        "memoryBytes": 8589934592
+      },
+      "idleShare": {
+        "milliCPU": 5619.047619047619,
+        "memoryBytes": 25241192416.49231
+      },
+      "packingCPU": 0.2625,
+      "packingMemory": 0.25390625,
+      "pinnedWorkloads": 0
+    },
+    {
+      "namespace": "checkout",
+      "pods": 3,
+      "nodes": 3,
+      "requested": {
+        "milliCPU": 1500,
+        "memoryBytes": 3221225472
+      },
+      "idleShare": {
+        "milliCPU": 3352.9411764705883,
+        "memoryBytes": 23044885635.982224
+      },
+      "packingCPU": 0.3090909090909091,
+      "packingMemory": 0.12263808139534883,
+      "pinnedWorkloads": 1
+    },
+    {
+      "namespace": "reports",
+      "pods": 2,
+      "nodes": 2,
+      "requested": {
+        "milliCPU": 2000,
+        "memoryBytes": 4294967296
+      },
+      "idleShare": {
+        "milliCPU": 3000,
+        "memoryBytes": 17695265259.52
+      },
+      "packingCPU": 0.4,
+      "packingMemory": 0.1953125,
+      "pinnedWorkloads": 1
+    },
+    {
+      "namespace": "monitoring",
+      "pods": 4,
+      "nodes": 4,
+      "requested": {
+        "milliCPU": 400,
+        "memoryBytes": 536870912
+      },
+      "idleShare": {
+        "milliCPU": 951.5406162464985,
+        "memoryBytes": 3275004336.0054703
+      },
+      "packingCPU": 0.29595854922279796,
+      "packingMemory": 0.14084167950693374,
+      "pinnedWorkloads": 0
+    },
+    {
+      "namespace": "batch",
+      "pods": 1,
+      "nodes": 1,
+      "requested": {
+        "milliCPU": 250,
+        "memoryBytes": 0
+      },
+      "idleShare": {
+        "milliCPU": 926.4705882352941,
+        "memoryBytes": 0
+      },
+      "packingCPU": 0.2125,
+      "packingMemory": 0,
+      "pinnedWorkloads": 0
+    }
+  ],
+  "limitations": [
+    "Snapshot heuristic, not a scheduler simulation: placement checks cover node selectors, required node affinity, taints, required pod (anti-)affinity, topology spread and host ports, but not volume zones, priorities, preemption or preferred rules.",
+    "Autoscaler settings are read where the cluster exposes them (Karpenter NodePools and NodeClaims), not Cluster Autoscaler flags or node group minimums.",
+    "One point in time: PDB status, replica counts and events change.",
+    "Packing is measured with resource requests, not real usage.",
+    "Pod size is judged only where a VPA recommendation exists; other workloads are unknowns.",
+    "Read-only: KubeShrink never modifies a cluster."
+  ]
+}

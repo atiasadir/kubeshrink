@@ -1,0 +1,78 @@
+{
+  "namespace": "batch",
+  "summary": "batch runs 1 pod(s) on 1 node(s) and requests 250m CPU, 0Mi memory. Its share of the idle capacity on those nodes is 926m CPU, 0Mi memory, so its packing is 21% CPU and 0% memory. 0 blocker(s), 0 possible blocker(s), 0 warning(s), 1 context finding(s).",
+  "pods": 1,
+  "requested": {
+    "milliCPU": 250,
+    "memoryBytes": 0
+  },
+  "idleShare": {
+    "milliCPU": 926.4705882352941,
+    "memoryBytes": 0
+  },
+  "packingCPU": 0.2125,
+  "packingMemory": 0,
+  "nodes": [
+    {
+      "node": "general-c",
+      "pool": "general",
+      "requested": {
+        "milliCPU": 250,
+        "memoryBytes": 0
+      },
+      "idleShare": {
+        "milliCPU": 926.4705882352941,
+        "memoryBytes": 0
+      },
+      "nodePackingCPU": 0.2125,
+      "nodePackingMemory": 0.0703125,
+      "alone": false,
+      "verdict": "blocked"
+    }
+  ],
+  "findings": [
+    {
+      "id": "F1",
+      "rule": "karpenter-not-consolidatable-yet",
+      "layer": "nodes",
+      "severity": "context",
+      "subject": "Node/general-c",
+      "claim": "Karpenter has not marked this node consolidatable yet, so it does not consider removing or replacing it. NodePool general waits consolidateAfter (1m) after pods were last added to or removed from a node.",
+      "appliesTo": [
+        "karpenter"
+      ],
+      "confidence": "medium",
+      "evidence": [
+        {
+          "object": "NodeClaim/general-c-x3",
+          "field": ".status.conditions[Consolidatable].status",
+          "value": "False",
+          "time": "2026-11-21T02:59:30Z"
+        },
+        {
+          "object": "NodePool/general",
+          "field": ".spec.disruption.consolidateAfter",
+          "value": "1m"
+        }
+      ],
+      "unknowns": [
+        "Frequent pod churn on the node keeps restarting this wait."
+      ]
+    }
+  ],
+  "otherTenantFindings": 1,
+  "vpaCoverage": {
+    "workloads": 0,
+    "withVPA": 0,
+    "withRecommendation": 0,
+    "oversized": 0
+  },
+  "limitations": [
+    "Snapshot heuristic, not a scheduler simulation: placement checks cover node selectors, required node affinity, taints, required pod (anti-)affinity, topology spread and host ports, but not volume zones, priorities, preemption or preferred rules.",
+    "Autoscaler settings are read where the cluster exposes them (Karpenter NodePools and NodeClaims), not Cluster Autoscaler flags or node group minimums.",
+    "One point in time: PDB status, replica counts and events change.",
+    "Packing is measured with resource requests, not real usage.",
+    "Pod size is judged only where a VPA recommendation exists; other workloads are unknowns.",
+    "Read-only: KubeShrink never modifies a cluster."
+  ]
+}

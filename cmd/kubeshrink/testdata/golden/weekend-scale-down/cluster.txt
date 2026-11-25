@@ -1,0 +1,51 @@
+Cluster
+4 node(s) run; by requests alone their pods would fit on 2. Pods request 37% of allocatable CPU and 26% of memory. Verdicts: 3 blocked, 0 possibly blocked, 1 with no blocker found.
+
+Pools (needed: nodes the requests would fit on if placement rules did not exist; a lower bound, not a plan)
+  POOL             NODES  NEEDED  EMPTY  CPU REQUESTED/ALLOCATABLE  MEMORY REQUESTED/ALLOCATABLE
+  (no pool label)  4      2       0      5.9/16.0 (37%)             16.5Gi/64.0Gi (26%)
+
+Node autoscaler: unknown on 4 node(s)
+
+What keeps nodes (rules that block or may block removal, most nodes first)
+  karpenter-do-not-disrupt [policy, blocker] on 1 node(s): node-c
+      The pod is annotated karpenter.sh/do-not-disrupt=true. Karpenter will not voluntarily disrupt a node running it, so the node stays until the pod finishes or the annotation is removed.
+  no-room-elsewhere [policy, blocker] on 1 node(s): node-c
+      The other nodes say no because of: node selector on 3 node(s).
+  pdb-zero-disruptions [policy, blocker] on 1 node(s): node-a
+      PodDisruptionBudget db-pdb currently allows 0 disruptions, so this pod cannot be evicted and the node cannot be drained.
+  pod-without-controller [policy, blocker] on 1 node(s): node-b
+      The pod has no controller, so nothing would recreate it elsewhere. Cluster Autoscaler keeps the node unless the pod is annotated safe-to-evict=true.
+  autoscaler-event [nodes, possible-blocker] on 1 node(s): node-c
+      A karpenter.sh/do-not-disrupt annotation blocks voluntary disruption.
+  local-storage [policy, possible-blocker] on 1 node(s): node-b
+      The pod uses local storage (emptyDir or hostPath). Cluster Autoscaler skips nodes with such pods when --skip-nodes-with-local-storage is enabled.
+  utilization-above-threshold [nodes, possible-blocker] on 1 node(s): node-c
+      Pods on this node request 78% of its CPU and 57% of its memory. Cluster Autoscaler only considers nodes below --scale-down-utilization-threshold (0.5 by default), so it may never evaluate this node for removal.
+
+Why pods exist: workloads held at a floor
+  1 workload(s) at HPA minReplicas 1: 1 pod(s) requesting 500m CPU, 1.0Gi
+  1 workload(s) at HPA minReplicas 2: 2 pod(s) requesting 1.0 CPU, 2.0Gi
+  1 workload(s) at KEDA minReplicaCount 2: 2 pod(s) requesting 1.0 CPU, 2.0Gi
+
+How big pods are: requests against VPA recommendations
+  0 of 4 long-running workload(s) have a VPA recommendation; the others are unknowns, not judged.
+
+Namespaces by the idle capacity they hold
+  NAMESPACE   PODS  NODES  REQUESTED        IDLE SHARE       PACKING CPU/MEM  PINNED
+  shop        3     3      1.5 CPU, 3.0Gi   3.7 CPU, 16.1Gi  29% / 16%        2
+  batch       1     1      500m CPU, 1.0Gi  2.8 CPU, 13.2Gi  15% / 7%         0
+  data        1     1      1.0 CPU, 4.0Gi   1.5 CPU, 8.5Gi   40% / 32%        0
+  monitoring  4     4      400m CPU, 512Mi  1.3 CPU, 3.7Gi   23% / 12%        0
+  ml          1     1      2.5 CPU, 8.0Gi   726m CPU, 6.0Gi  77% / 57%        0
+
+Data notes:
+  - No node autoscaler was found in the snapshot (no Karpenter labels on nodes, no Cluster Autoscaler pods or events). Findings for both are kept, because managed offerings run Cluster Autoscaler outside the cluster. If no autoscaler runs, nothing removes nodes automatically: rerun with --node-autoscaler none to drop autoscaler-specific findings.
+
+Limitations:
+  - Snapshot heuristic, not a scheduler simulation: placement checks cover node selectors, required node affinity, taints, required pod (anti-)affinity, topology spread and host ports, but not volume zones, priorities, preemption or preferred rules.
+  - Autoscaler settings are read where the cluster exposes them (Karpenter NodePools and NodeClaims), not Cluster Autoscaler flags or node group minimums.
+  - One point in time: PDB status, replica counts and events change.
+  - Packing is measured with resource requests, not real usage.
+  - Pod size is judged only where a VPA recommendation exists; other workloads are unknowns.
+  - Read-only: KubeShrink never modifies a cluster.
