@@ -26,6 +26,8 @@ const (
 
 func annField(key string) string { return fmt.Sprintf(".metadata.annotations[%q]", key) }
 
+func labelField(key string) string { return fmt.Sprintf(".metadata.labels[%q]", key) }
+
 func podRef(p *snapshot.Pod) string {
 	return snapshot.Ref("Pod", p.Metadata.Namespace, p.Metadata.Name)
 }

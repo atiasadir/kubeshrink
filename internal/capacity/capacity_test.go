@@ -119,3 +119,22 @@ func TestPoolOf(t *testing.T) {
 		t.Errorf("PoolOf(unlabeled) = %s", pool)
 	}
 }
+
+// AttributeNodes leaves out the nodes keep rejects, with their pods.
+func TestAttributeNodesLeavesOutNodes(t *testing.T) {
+	s := &snapshot.Snapshot{
+		Nodes: []snapshot.Node{node("a", "4", "16Gi"), node("b", "4", "16Gi")},
+		Pods:  []snapshot.Pod{pod("team", "p1", "a", "1", "1Gi", "ReplicaSet"), pod("team", "p2", "b", "2", "2Gi", "ReplicaSet")},
+	}
+	att := AttributeNodes(s, func(n *snapshot.Node) bool { return n.Metadata.Name != "b" })
+	alloc, req := att.Totals()
+	if len(att.Nodes) != 1 || !near(alloc.MilliCPU, 4000) || !near(req.MilliCPU, 1000) {
+		t.Errorf("nodes %d, allocatable %v, requested %v; want node a only", len(att.Nodes), alloc, req)
+	}
+	if u := att.Namespaces["team"]; u == nil || u.Pods != 1 || !near(u.Requested.MilliCPU, 1000) {
+		t.Errorf("team = %+v, want only the pod on a", u)
+	}
+	if n := len(Attribute(s).Nodes); n != 2 {
+		t.Errorf("Attribute measured %d node(s), want 2", n)
+	}
+}

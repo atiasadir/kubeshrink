@@ -133,10 +133,17 @@ type Attribution struct {
 // Attribute measures every node and splits each node's idle capacity among
 // the namespaces with pods on it, in proportion to their requests, separately
 // for CPU and memory. Pods that request nothing are charged nothing.
-func Attribute(s *snapshot.Snapshot) *Attribution {
+func Attribute(s *snapshot.Snapshot) *Attribution { return AttributeNodes(s, nil) }
+
+// AttributeNodes is Attribute over the nodes keep accepts, or over every node
+// when keep is nil. The pods on the other nodes are left out with them.
+func AttributeNodes(s *snapshot.Snapshot, keep func(*snapshot.Node) bool) *Attribution {
 	a := &Attribution{Namespaces: map[string]*NamespaceUsage{}}
 	for i := range s.Nodes {
 		n := &s.Nodes[i]
+		if keep != nil && !keep(n) {
+			continue
+		}
 		alloc := snapshot.NodeAllocatable(n)
 		pool, label := PoolOf(n)
 		u := NodeUsage{

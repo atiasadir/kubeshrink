@@ -26,13 +26,13 @@ var DefaultPoolLabels = []string{
 
 var (
 	descNodes = prometheus.NewDesc("kubeshrink_nodes",
-		"Nodes per verdict (blocked, possibly-blocked, no-blocker-found) and node pool, from the first configured pool label that is set.",
+		"Nodes per verdict (blocked, possibly-blocked, no-blocker-found) and node pool, from the first configured pool label that is set. Control-plane nodes are left out unless every node is one.",
 		[]string{"verdict", "nodepool"}, nil)
 	descNodesNeeded = prometheus.NewDesc("kubeshrink_nodes_needed",
-		"Request-based estimate of how many nodes the pods would fit on, ignoring placement rules: a lower bound, not a plan. basis is requests, or vpa-target where VPA targets replace requests.",
+		"Request-based estimate of how many nodes the pods would fit on, ignoring placement rules: a lower bound, not a plan. basis is requests, or vpa-target where VPA targets replace requests. Control-plane nodes are left out unless every node is one.",
 		[]string{"basis"}, nil)
 	descBlocked = prometheus.NewDesc("kubeshrink_blocked_nodes",
-		"Nodes with at least one finding of a rule (reason, the catalog rule ID) at a severity (blocker or possible-blocker). A node counts under every reason it has.",
+		"Nodes with at least one finding of a rule (reason, the catalog rule ID) at a severity (blocker or possible-blocker). A node counts under every reason it has. Control-plane nodes are left out unless every node is one.",
 		[]string{"reason", "severity"}, nil)
 	descPinned = prometheus.NewDesc("kubeshrink_pinned_workloads",
 		"Workloads held at their HPA or KEDA minimum (controller hpa or keda) or at a paused KEDA replica count (keda-paused).",
@@ -64,7 +64,7 @@ func observe(s *snapshot.Snapshot, a *explain.Analyzer, poolLabels []string) *ob
 		nodes: map[pair]float64{}, needed: map[string]float64{}, blocked: map[pair]float64{},
 		pinned: map[pair]float64{}, oversized: map[string]float64{}, withoutVPA: map[string]float64{},
 	}
-	for _, r := range a.Nodes() {
+	for _, r := range a.CountedNodes() {
 		o.nodes[pair{r.Verdict, poolOf(s.Node(r.Node), poolLabels)}]++
 		seen := map[pair]bool{}
 		for _, f := range r.Findings {

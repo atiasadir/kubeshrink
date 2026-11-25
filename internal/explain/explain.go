@@ -36,11 +36,16 @@ type Analyzer struct {
 	att    *capacity.Attribution
 	caSeen bool
 	nodes  map[string]*NodeReport
+	// controlPlane holds the control-plane nodes set apart from the others
+	// (see controlPlaneApart).
+	controlPlane map[string]bool
 }
 
 // NewAnalyzer prepares an analysis of the snapshot.
 func NewAnalyzer(s *snapshot.Snapshot, opts Options) *Analyzer {
-	return &Analyzer{snap: s, opts: opts, att: capacity.Attribute(s), caSeen: clusterAutoscalerSeen(s), nodes: map[string]*NodeReport{}}
+	a := &Analyzer{snap: s, opts: opts, caSeen: clusterAutoscalerSeen(s), nodes: map[string]*NodeReport{}, controlPlane: controlPlaneApart(s)}
+	a.att = capacity.AttributeNodes(s, a.counted)
+	return a
 }
 
 // ExplainNode explains one node with default options.
@@ -60,6 +65,8 @@ type nodeContext struct {
 	node    *snapshot.Node
 	movable []*snapshot.Pod
 	notes   *[]string
+	// controlPlane is set for a control-plane node set apart from the others.
+	controlPlane bool
 }
 
 func (c *nodeContext) note(msg string) { addNote(c.notes, msg) }
@@ -85,7 +92,7 @@ func (a *Analyzer) Node(name string) (*NodeReport, error) {
 		DataNotes:   append([]string(nil), s.Notes...),
 		Limitations: Limitations,
 	}
-	c := &nodeContext{snap: s, node: node, notes: &r.DataNotes}
+	c := &nodeContext{snap: s, node: node, notes: &r.DataNotes, controlPlane: a.controlPlane[name]}
 	for i := range s.Pods {
 		p := &s.Pods[i]
 		if p.Spec.NodeName != name {
@@ -166,6 +173,9 @@ func karpenterPool(n *snapshot.Node) string {
 
 // managerOf decides which node autoscaler, if any, manages the node.
 func (a *Analyzer) managerOf(n *snapshot.Node) string {
+	if a.controlPlane[n.Metadata.Name] {
+		return AutoscalerNone // no node autoscaler removes control-plane nodes
+	}
 	if karpenterPool(n) != "" {
 		return Karpenter
 	}
@@ -195,7 +205,9 @@ func (a *Analyzer) applyManager(r *NodeReport, n *snapshot.Node) {
 		addNote(&r.DataNotes, noAutoscalerSeenNote)
 		return
 	case AutoscalerNone:
-		addNote(&r.DataNotes, noAutoscalerNote)
+		if !a.controlPlane[r.Node] {
+			addNote(&r.DataNotes, noAutoscalerNote)
+		}
 	}
 	kept := r.Findings[:0]
 	omitted := 0
@@ -216,7 +228,11 @@ func (a *Analyzer) applyManager(r *NodeReport, n *snapshot.Node) {
 	case CA:
 		addNote(&r.DataNotes, fmt.Sprintf("%s %s is managed by Cluster Autoscaler; %d finding(s) that only apply to Karpenter were omitted.", nodeNotePrefix, r.Node, omitted))
 	default:
-		addNote(&r.DataNotes, fmt.Sprintf("%s %s has no node autoscaler (--node-autoscaler none); %d finding(s) that only apply to Cluster Autoscaler or Karpenter were omitted.", nodeNotePrefix, r.Node, omitted))
+		why := "has no node autoscaler (--node-autoscaler none)"
+		if a.controlPlane[r.Node] {
+			why = "is a control-plane node, which no node autoscaler removes"
+		}
+		addNote(&r.DataNotes, fmt.Sprintf("%s %s %s; %d finding(s) that only apply to Cluster Autoscaler or Karpenter were omitted.", nodeNotePrefix, r.Node, why, omitted))
 	}
 }
 

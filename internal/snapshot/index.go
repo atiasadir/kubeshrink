@@ -85,6 +85,24 @@ func IsMirrorPod(p *Pod) bool {
 // DaemonSet and static pods do, so it never needs room elsewhere.
 func IsNodeBound(p *Pod) bool { return IsDaemonSetPod(p) || IsMirrorPod(p) }
 
+// controlPlaneLabels mark a node that runs the cluster's control plane: the
+// current label, then the older one that some distributions still set.
+var controlPlaneLabels = []string{"node-role.kubernetes.io/control-plane", "node-role.kubernetes.io/master"}
+
+// ControlPlaneLabel returns the first control-plane label set on the node, or
+// "" if there is none. Only presence counts: kubeadm leaves the value empty.
+func ControlPlaneLabel(n *Node) string {
+	for _, l := range controlPlaneLabels {
+		if _, ok := n.Metadata.Labels[l]; ok {
+			return l
+		}
+	}
+	return ""
+}
+
+// IsControlPlane reports whether the node runs the cluster's control plane.
+func IsControlPlane(n *Node) bool { return ControlPlaneLabel(n) != "" }
+
 // PDBsFor returns the PodDisruptionBudgets that select the pod.
 func (s *Snapshot) PDBsFor(p *Pod) []*PodDisruptionBudget {
 	var out []*PodDisruptionBudget
