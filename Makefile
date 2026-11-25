@@ -5,6 +5,11 @@ COMMIT  ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
 DATE    ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
 LDFLAGS := -s -w -X main.version=$(VERSION) -X main.commit=$(COMMIT) -X main.date=$(DATE)
 IMAGE   ?= kubeshrink:dev
+# Trivy runs from its official image, pinned by digest (bump it by hand;
+# Dependabot does not read Makefiles). Its vulnerability database is cached in
+# a Docker volume and refreshed when a newer one is published.
+TRIVY_IMAGE ?= aquasec/trivy:0.76.2@sha256:8f6bb947dbc528902e11f2f5be52f7b519f6a39d5d148f41166f2040499768fb
+TRIVY_RUN   := docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v kubeshrink-trivy-cache:/root/.cache/trivy
 
 .PHONY: all build plugin test lint vuln fmt example chart image clean
 
@@ -39,6 +44,15 @@ chart: ## Lint the Helm chart and render it with each monitor
 
 image: ## Build the container image locally; nothing is pushed
 	docker build --build-arg VERSION=$(VERSION) --build-arg COMMIT=$(COMMIT) --build-arg DATE=$(DATE) -t $(IMAGE) .
+
+.PHONY: scan sbom
+scan: ## Scan the local image: list every finding, fail on fixable HIGH or CRITICAL ones
+	$(TRIVY_RUN) $(TRIVY_IMAGE) image --no-progress $(IMAGE)
+	$(TRIVY_RUN) $(TRIVY_IMAGE) image --no-progress --quiet --exit-code 1 --severity HIGH,CRITICAL --ignore-unfixed $(IMAGE)
+
+sbom: ## Write a CycloneDX SBOM of the local image to dist/kubeshrink.cdx.json
+	mkdir -p dist
+	$(TRIVY_RUN) -v $(CURDIR)/dist:/out $(TRIVY_IMAGE) image --no-progress --quiet --format cyclonedx --output /out/kubeshrink.cdx.json $(IMAGE)
 
 clean:
 	rm -rf bin dist
