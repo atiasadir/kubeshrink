@@ -137,8 +137,13 @@ func floorsAt(sos []*snapshot.ScaledObject, hpas []*snapshot.HorizontalPodAutosc
 	return out
 }
 
+// checkReplicaFloorsNode reports the workloads of the node's movable pods that
+// are held at a replica floor: an autoscaler minimum, a paused KEDA
+// ScaledObject or a kube-downscaler setting (see replicaFindings).
 func checkReplicaFloorsNode(c *nodeContext) []Finding { return replicaFindings(c.snap, c.movable) }
 
+// checkReplicaFloorsNS does the same as checkReplicaFloorsNode for every pod
+// of a namespace.
 func checkReplicaFloorsNS(c *nsContext) []Finding { return replicaFindings(c.snap, c.pods) }
 
 // replicaFindings explains why the pods exist at all: which autoscaler floor

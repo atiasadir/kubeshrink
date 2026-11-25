@@ -5,11 +5,15 @@ package snapshot
 
 import "strconv"
 
+// LabelSelector is a Kubernetes label selector: labels to match and
+// expressions to satisfy.
 type LabelSelector struct {
 	MatchLabels      map[string]string          `json:"matchLabels,omitempty"`
 	MatchExpressions []LabelSelectorRequirement `json:"matchExpressions,omitempty"`
 }
 
+// LabelSelectorRequirement is one expression of a LabelSelector, such as key
+// In (a, b).
 type LabelSelectorRequirement struct {
 	Key      string   `json:"key"`
 	Operator string   `json:"operator"`

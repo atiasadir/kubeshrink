@@ -10,6 +10,7 @@ linters:
     - unused
     - misspell
     - unparam
+    - revive
   settings:
     errcheck:
       # Writing to stdout/stderr: a failed write has nowhere better to be reported.
@@ -17,6 +18,13 @@ linters:
         - fmt.Fprint
         - fmt.Fprintf
         - fmt.Fprintln
+    revive:
+      rules:
+        # Every package and exported identifier has a doc comment.
+        - name: exported
+          arguments:
+            - disableStutteringCheck
+        - name: package-comments
   exclusions:
     rules:
       # Test builders keep explicit parameters for readability.

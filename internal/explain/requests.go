@@ -85,8 +85,12 @@ func quantity(m map[string]string, res string) (float64, bool) {
 	return q, err == nil
 }
 
+// checkRequestsNode compares the requests of the node's movable pods with
+// their VPA recommendations (see requestFindings).
 func checkRequestsNode(c *nodeContext) []Finding { return requestFindings(c.snap, c.movable) }
 
+// checkRequestsNS compares the requests of a namespace's pods with their VPA
+// recommendations (see requestFindings).
 func checkRequestsNS(c *nsContext) []Finding { return requestFindings(c.snap, c.pods) }
 
 // requestFindings compares each workload's requests with its VPA, using one

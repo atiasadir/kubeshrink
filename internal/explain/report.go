@@ -20,21 +20,25 @@ import (
 	"github.com/atiasadir/kubeshrink/internal/snapshot"
 )
 
+// Severity says how strongly a finding keeps a node, from a blocker on its own
+// to context that only explains.
 type Severity string
 
 const (
-	// Blocker: this alone stops the node from being removed.
+	// Blocker means this alone stops the node from being removed.
 	Blocker Severity = "blocker"
-	// PossibleBlocker: blocks only under configuration the snapshot cannot see.
+	// PossibleBlocker means it blocks only under configuration the snapshot cannot see.
 	PossibleBlocker Severity = "possible-blocker"
-	// Warning: a misconfiguration that wastes capacity without blocking removal.
+	// Warning means a misconfiguration that wastes capacity without blocking removal.
 	Warning Severity = "warning"
-	// Context: explains why pods exist or must stay apart; not a blocker.
+	// Context explains why pods exist or must stay apart; it is not a blocker.
 	Context Severity = "context"
 )
 
+// Confidence says how sure a finding is, given what the snapshot shows.
 type Confidence string
 
+// The confidence levels, from most to least sure.
 const (
 	High   Confidence = "high"
 	Medium Confidence = "medium"
@@ -44,6 +48,8 @@ const (
 // Layer is where a finding's cause sits.
 type Layer string
 
+// The layers findings are grouped by: how many pods run, how big they are,
+// what keeps them in place and what keeps the nodes.
 const (
 	LayerReplicas Layer = "replicas"
 	LayerRequests Layer = "requests"
@@ -63,6 +69,7 @@ var Layers = []struct {
 	{LayerNodes, "Will the node autoscaler remove or replace the node?"},
 }
 
+// The node autoscalers a finding can apply to, as listed in Finding.AppliesTo.
 const (
 	CA        = "cluster-autoscaler"
 	Karpenter = "karpenter"
@@ -70,6 +77,7 @@ const (
 
 var bothAutoscalers = []string{CA, Karpenter}
 
+// The verdicts of a node report.
 const (
 	VerdictBlocked         = "blocked"
 	VerdictPossiblyBlocked = "possibly-blocked"
@@ -84,6 +92,9 @@ type Evidence struct {
 	Time   string `json:"time,omitempty"`
 }
 
+// Finding is one evidence-backed reason that a node, workload or pod keeps
+// capacity: what the rule claims, the evidence for it, what else could explain
+// it and what the snapshot cannot show.
 type Finding struct {
 	ID           string     `json:"id"`
 	Rule         string     `json:"rule"`
@@ -99,6 +110,7 @@ type Finding struct {
 	Unknowns     []string   `json:"unknowns,omitempty"`
 }
 
+// IgnoredPod is a pod an analysis left out, and why.
 type IgnoredPod struct {
 	Pod    string `json:"pod"`
 	Reason string `json:"reason"`
