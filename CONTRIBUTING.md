@@ -56,3 +56,8 @@ Metric names, types and labels are pinned by `TestMetricsContract` in `internal/
   ```
 
 By contributing you agree that your contributions are licensed under the Apache License 2.0.
+
+## Releasing
+
+1. In one pull request, set `appVersion` in `charts/kubeshrink/Chart.yaml` to the new version without its `v`, bump the chart's `version`, and turn *Unreleased* in `CHANGELOG.md` into the new version.
+2. Once it is merged and CI passes on `main`, push an annotated tag `vX.Y.Z` on the merge commit. The release workflow stops before it pushes anything if the tag and `appVersion` differ; `make release-check VERSION=vX.Y.Z` runs the same check locally.

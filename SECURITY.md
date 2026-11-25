@@ -14,7 +14,7 @@ KubeShrink is designed to be read-only. Anything that lets it modify a cluster, 
 
 ## Supported versions
 
-The project is pre-1.0; only the latest commit on `main` receives fixes.
+The project is pre-1.0. Only the latest release, currently 0.1.x, receives fixes; they land on `main` and ship as a patch release.
 
 ## How vulnerabilities are handled
 

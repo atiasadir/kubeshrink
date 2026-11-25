@@ -3,7 +3,9 @@
 # image is scanned first with the same gate as CI, then built for linux/amd64
 # and linux/arm64, pushed to GitHub Container Registry, signed by digest with
 # cosign keyless signing (GitHub OIDC) and given its CycloneDX SBOM as a signed
-# attestation. The README shows how to verify both.
+# attestation. The README shows how to verify both. Before any of that,
+# make release-check stops the run unless the chart's appVersion is the tag
+# without its v, so the chart installs this release by default.
 name: release
 
 on:
@@ -34,6 +36,10 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - name: Check that the chart's appVersion is this release
+        env:
+          VERSION: ${{ github.ref_name }}
+        run: make release-check VERSION="$VERSION"
       - name: Record the build information
         id: info
         run: |

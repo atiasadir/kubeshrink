@@ -25,6 +25,7 @@ import (
 var (
 	kubeconfig  = flag.String("kubeconfig", "", "kubeconfig file of the test cluster")
 	kubeContext = flag.String("context", "", "context of the test cluster in that file")
+	imageRepo   = flag.String("image-repository", "kubeshrink", "repository of the kubeshrink image loaded into the cluster")
 	imageTag    = flag.String("image-tag", "e2e", "tag of the kubeshrink image loaded into the cluster")
 )
 
@@ -100,7 +101,8 @@ func TestCLI(t *testing.T) {
 // workloads are there to be found.
 func TestChart(t *testing.T) {
 	helm(t, "install", release, chartDir, "--namespace", releaseNamespace, "--create-namespace",
-		"--set", "image.tag="+*imageTag, "--set", "image.pullPolicy=Never", "--set", "serve.interval=10s")
+		"--set", "image.repository="+*imageRepo, "--set", "image.tag="+*imageTag,
+		"--set", "image.pullPolicy=Never", "--set", "serve.interval=10s")
 	kubectl(t, "rollout", "status", "deployment/"+release, "-n", releaseNamespace, "--timeout=120s")
 
 	t.Run("metrics", func(t *testing.T) {
