@@ -1,0 +1,155 @@
+{
+  "namespace": "monitoring",
+  "summary": "monitoring runs 4 pod(s) on 4 node(s) and requests 400m CPU, 512Mi memory. Its share of the idle capacity on those nodes is 1.3 CPU, 3.7Gi memory, so its packing is 23% CPU and 12% memory. 0 blocker(s), 2 possible blocker(s), 0 warning(s), 0 context finding(s).",
+  "pods": 4,
+  "requested": {
+    "milliCPU": 400,
+    "memoryBytes": 536870912
+  },
+  "idleShare": {
+    "milliCPU": 1312.3655913978494,
+    "memoryBytes": 3935239668.918736
+  },
+  "packingCPU": 0.23359497645211932,
+  "packingMemory": 0.12004866657159158,
+  "nodes": [
+    {
+      "node": "node-a",
+      "pool": "(no pool label)",
+      "requested": {
+        "milliCPU": 100,
+        "memoryBytes": 134217728
+      },
+      "idleShare": {
+        "milliCPU": 150,
+        "memoryBytes": 284803471.6097561
+      },
+      "nodePackingCPU": 0.4,
+      "nodePackingMemory": 0.3203125,
+      "alone": false,
+      "verdict": "blocked"
+    },
+    {
+      "node": "node-b",
+      "pool": "(no pool label)",
+      "requested": {
+        "milliCPU": 100,
+        "memoryBytes": 134217728
+      },
+      "idleShare": {
+        "milliCPU": 566.6666666666666,
+        "memoryBytes": 1774656625.7777777
+      },
+      "nodePackingCPU": 0.15,
+      "nodePackingMemory": 0.0703125,
+      "alone": false,
+      "verdict": "blocked"
+    },
+    {
+      "node": "node-c",
+      "pool": "(no pool label)",
+      "requested": {
+        "milliCPU": 100,
+        "memoryBytes": 134217728
+      },
+      "idleShare": {
+        "milliCPU": 29.032258064516128,
+        "memoryBytes": 101122945.75342466
+      },
+      "nodePackingCPU": 0.775,
+      "nodePackingMemory": 0.5703125,
+      "alone": false,
+      "verdict": "blocked"
+    },
+    {
+      "node": "node-d",
+      "pool": "(no pool label)",
+      "requested": {
+        "milliCPU": 100,
+        "memoryBytes": 134217728
+      },
+      "idleShare": {
+        "milliCPU": 566.6666666666666,
+        "memoryBytes": 1774656625.7777777
+      },
+      "nodePackingCPU": 0.15,
+      "nodePackingMemory": 0.0703125,
+      "alone": false,
+      "verdict": "no-blocker-found"
+    }
+  ],
+  "findings": [
+    {
+      "id": "F1",
+      "rule": "autoscaler-event",
+      "layer": "nodes",
+      "severity": "possible-blocker",
+      "subject": "Node/node-c",
+      "claim": "karpenter reported DisruptionBlocked: Pod \"shop/worker-5c6b7-q8w2e\" has \"karpenter.sh/do-not-disrupt\" annotation (seen 12 times)",
+      "meaning": "A karpenter.sh/do-not-disrupt annotation blocks voluntary disruption.",
+      "appliesTo": [
+        "karpenter"
+      ],
+      "confidence": "high",
+      "evidence": [
+        {
+          "object": "Event/default/node-c.1801a2b3c4d5e6f7",
+          "field": ".reason, .message",
+          "value": "DisruptionBlocked: Pod \"shop/worker-5c6b7-q8w2e\" has \"karpenter.sh/do-not-disrupt\" annotation",
+          "time": "2026-11-21T03:00:00Z"
+        }
+      ],
+      "unknowns": [
+        "Events expire (one hour by default) and may describe an earlier state; compare the timestamp with when the snapshot was taken."
+      ]
+    },
+    {
+      "id": "F2",
+      "rule": "utilization-above-threshold",
+      "layer": "nodes",
+      "severity": "possible-blocker",
+      "subject": "Node/node-c",
+      "claim": "Pods on this node request 78% of its CPU and 57% of its memory. Cluster Autoscaler only considers nodes below --scale-down-utilization-threshold (0.5 by default), so it may never evaluate this node for removal.",
+      "appliesTo": [
+        "cluster-autoscaler"
+      ],
+      "confidence": "medium",
+      "evidence": [
+        {
+          "object": "Node/node-c",
+          "field": ".status.allocatable",
+          "value": "cpu=4 memory=16Gi"
+        },
+        {
+          "object": "Node/node-c",
+          "field": "sum of pod requests (including DaemonSets)",
+          "value": "cpu=3100m memory=9344Mi"
+        }
+      ],
+      "alternatives": [
+        "Karpenter consolidation does not use this threshold; it compares the cost of deleting or replacing the node."
+      ],
+      "unknowns": [
+        "The configured threshold and --ignore-daemonsets-utilization are not in the snapshot."
+      ]
+    }
+  ],
+  "otherTenantFindings": 5,
+  "vpaCoverage": {
+    "workloads": 0,
+    "withVPA": 0,
+    "withRecommendation": 0,
+    "oversized": 0
+  },
+  "dataNotes": [
+    "No node autoscaler was found in the snapshot (no Karpenter labels on nodes, no Cluster Autoscaler pods or events). Findings for both are kept, because managed offerings run Cluster Autoscaler outside the cluster. If no autoscaler runs, nothing removes nodes automatically: rerun with --node-autoscaler none to drop autoscaler-specific findings."
+  ],
+  "limitations": [
+    "Snapshot heuristic, not a scheduler simulation: placement checks cover node selectors, required node affinity, taints, required pod (anti-)affinity, topology spread and host ports, but not volume zones, priorities, preemption or preferred rules.",
+    "Autoscaler settings are read where the cluster exposes them (Karpenter NodePools and NodeClaims), not Cluster Autoscaler flags or node group minimums.",
+    "One point in time: PDB status, replica counts and events change.",
+    "Packing is measured with resource requests, not real usage.",
+    "Pod size is judged only where a VPA recommendation exists; other workloads are unknowns.",
+    "Read-only: KubeShrink never modifies a cluster."
+  ]
+}

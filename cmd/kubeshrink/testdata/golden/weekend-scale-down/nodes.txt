@@ -1,0 +1,5 @@
+NODE    POOL             MANAGED BY  VERDICT           BLOCKERS  POSSIBLE  WARNINGS  CONTEXT  PODS
+node-a  (no pool label)  unknown     blocked           1         0         1         1        2
+node-b  (no pool label)  unknown     blocked           1         1         0         0        1
+node-c  (no pool label)  unknown     blocked           2         2         1         2        2
+node-d  (no pool label)  unknown     no-blocker-found  0         0         1         2        1

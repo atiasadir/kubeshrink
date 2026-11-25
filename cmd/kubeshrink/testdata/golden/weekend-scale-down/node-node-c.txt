@@ -1,0 +1,113 @@
+Node node-c: BLOCKED
+Pool: (no pool label)
+Managed by: unknown
+Requested: 3.1 CPU, 9.1Gi of 4.0 CPU, 16.0Gi allocatable
+2 blocker(s), 2 possible blocker(s), 1 warning(s), 2 context finding(s); 2 pod(s) would need to move.
+
+Pods that would need to move (2):
+  - Pod/shop/worker-5c6b7-q8w2e
+  - Pod/ml/infer-0
+
+Ignored pods:
+  - Pod/monitoring/node-exporter-c (DaemonSet pod; autoscalers do not need to reschedule it)
+
+== REPLICAS: Why do these pods exist?
+
+[F1] WARNING  keda-hpa-conflict  Deployment/shop/worker
+    The workload is targeted by a KEDA ScaledObject and by a separate HPA. KEDA manages its own HPA, so two HPAs act on the same replica count and can hold it above what either intends.
+    Confidence: high
+    Evidence:
+      - Pod/shop/worker-5c6b7-q8w2e .metadata.ownerReferences (controller) = ReplicaSet/worker-5c6b7
+      - Deployment/shop/worker .spec.replicas = 2
+      - ScaledObject/shop/worker .spec.scaleTargetRef = Deployment/shop/worker
+      - HorizontalPodAutoscaler/shop/worker .spec.scaleTargetRef = Deployment/shop/worker
+    Other explanations:
+      - If the extra HPA was created by KEDA under a non-standard name, this is a false positive; check its ownerReferences.
+    Unknowns:
+      - The Deployment name was inferred from the ReplicaSet name because the ReplicaSet is not in the snapshot.
+
+[F2] CONTEXT  replica-floor  Deployment/shop/worker
+    The workload sits at its KEDA floor (minReplicaCount=2, replicas=2). KEDA will not scale it lower, so its 2 pod(s) keep holding 1.0 CPU and 2.0Gi memory even when idle.
+    What it means: These pods exist because of configuration, not load. Lowering the minimum (or scaling to zero off-hours) is what frees this capacity.
+    Confidence: high
+    Evidence:
+      - Pod/shop/worker-5c6b7-q8w2e .metadata.ownerReferences (controller) = ReplicaSet/worker-5c6b7
+      - Deployment/shop/worker .spec.replicas = 2
+      - ScaledObject/shop/worker .spec.minReplicaCount = 2
+    Unknowns:
+      - The Deployment name was inferred from the ReplicaSet name because the ReplicaSet is not in the snapshot.
+
+[F3] CONTEXT  replica-floor  Deployment/shop/worker
+    The workload sits at its HPA floor (minReplicas=2, replicas=2). HPA will not scale it lower, so its 2 pod(s) keep holding 1.0 CPU and 2.0Gi memory even when idle.
+    What it means: These pods exist because of configuration, not load. Lowering the minimum (or scaling to zero off-hours) is what frees this capacity.
+    Confidence: high
+    Evidence:
+      - Pod/shop/worker-5c6b7-q8w2e .metadata.ownerReferences (controller) = ReplicaSet/worker-5c6b7
+      - Deployment/shop/worker .spec.replicas = 2
+      - HorizontalPodAutoscaler/shop/worker .spec.minReplicas = 2
+    Unknowns:
+      - The Deployment name was inferred from the ReplicaSet name because the ReplicaSet is not in the snapshot.
+
+== POLICY: Where may they run, and may they move?
+
+[F4] BLOCKER  no-room-elsewhere  Pod/ml/infer-0
+    None of the 3 other schedulable node(s) in the snapshot can take this pod. Draining this node would leave it Pending, so autoscalers keep the node.
+    What it means: The other nodes say no because of: node selector on 3 node(s).
+    Applies to: cluster-autoscaler, karpenter
+    Confidence: medium
+    Evidence:
+      - Pod/ml/infer-0 requests (containers, init containers, overhead) = cpu=2500m memory=8Gi
+      - Pod/ml/infer-0 .spec.nodeSelector = accelerator=gpu-a
+      - Node/node-a fit check = node selector accelerator=gpu-a not matched
+      - Node/node-b fit check = node selector accelerator=gpu-a not matched
+      - Node/node-d fit check = node selector accelerator=gpu-a not matched
+    Other explanations:
+      - Karpenter may replace this node with a cheaper one instead of deleting it; this rule only checks moving pods onto existing nodes.
+      - Requests may be larger than real usage; right-sizing (for example with VPA recommendations) could create room.
+    Unknowns:
+      - Placement is a first-fit estimate by requests, largest pod first; a different packing might succeed.
+      - Volume zones, pod priority and preemption were not evaluated.
+
+[F5] BLOCKER  karpenter-do-not-disrupt  Pod/shop/worker-5c6b7-q8w2e
+    The pod is annotated karpenter.sh/do-not-disrupt=true. Karpenter will not voluntarily disrupt a node running it, so the node stays until the pod finishes or the annotation is removed.
+    Applies to: karpenter
+    Confidence: high
+    Evidence:
+      - Pod/shop/worker-5c6b7-q8w2e .metadata.annotations["karpenter.sh/do-not-disrupt"] = true
+    Other explanations:
+      - If this node is not managed by Karpenter, the annotation has no effect.
+
+== NODES: Will the node autoscaler remove or replace the node?
+
+[F6] POSSIBLE-BLOCKER  autoscaler-event  Node/node-c
+    karpenter reported DisruptionBlocked: Pod "shop/worker-5c6b7-q8w2e" has "karpenter.sh/do-not-disrupt" annotation (seen 12 times)
+    What it means: A karpenter.sh/do-not-disrupt annotation blocks voluntary disruption.
+    Applies to: karpenter
+    Confidence: high
+    Evidence:
+      - Event/default/node-c.1801a2b3c4d5e6f7 .reason, .message = DisruptionBlocked: Pod "shop/worker-5c6b7-q8w2e" has "karpenter.sh/do-not-disrupt" annotation (at 2026-11-21T03:00:00Z)
+    Unknowns:
+      - Events expire (one hour by default) and may describe an earlier state; compare the timestamp with when the snapshot was taken.
+
+[F7] POSSIBLE-BLOCKER  utilization-above-threshold  Node/node-c
+    Pods on this node request 78% of its CPU and 57% of its memory. Cluster Autoscaler only considers nodes below --scale-down-utilization-threshold (0.5 by default), so it may never evaluate this node for removal.
+    Applies to: cluster-autoscaler
+    Confidence: medium
+    Evidence:
+      - Node/node-c .status.allocatable = cpu=4 memory=16Gi
+      - Node/node-c sum of pod requests (including DaemonSets) = cpu=3100m memory=9344Mi
+    Other explanations:
+      - Karpenter consolidation does not use this threshold; it compares the cost of deleting or replacing the node.
+    Unknowns:
+      - The configured threshold and --ignore-daemonsets-utilization are not in the snapshot.
+
+Data notes:
+  - No node autoscaler was found in the snapshot (no Karpenter labels on nodes, no Cluster Autoscaler pods or events). Findings for both are kept, because managed offerings run Cluster Autoscaler outside the cluster. If no autoscaler runs, nothing removes nodes automatically: rerun with --node-autoscaler none to drop autoscaler-specific findings.
+
+Limitations:
+  - Snapshot heuristic, not a scheduler simulation: placement checks cover node selectors, required node affinity, taints, required pod (anti-)affinity, topology spread and host ports, but not volume zones, priorities, preemption or preferred rules.
+  - Autoscaler settings are read where the cluster exposes them (Karpenter NodePools and NodeClaims), not Cluster Autoscaler flags or node group minimums.
+  - One point in time: PDB status, replica counts and events change.
+  - Packing is measured with resource requests, not real usage.
+  - Pod size is judged only where a VPA recommendation exists; other workloads are unknowns.
+  - Read-only: KubeShrink never modifies a cluster.

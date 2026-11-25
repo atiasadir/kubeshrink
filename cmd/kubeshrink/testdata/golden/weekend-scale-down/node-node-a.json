@@ -1,0 +1,153 @@
+{
+  "node": "node-a",
+  "pool": "(no pool label)",
+  "managedBy": "unknown",
+  "verdict": "blocked",
+  "summary": "1 blocker(s), 0 possible blocker(s), 1 warning(s), 1 context finding(s); 2 pod(s) would need to move.",
+  "allocatable": {
+    "milliCPU": 4000,
+    "memoryBytes": 17179869184,
+    "pods": 110
+  },
+  "requested": {
+    "milliCPU": 1600,
+    "memoryBytes": 5502926848,
+    "pods": 3
+  },
+  "podsToMove": [
+    "Pod/shop/web-7d9f8-x2k4p",
+    "Pod/data/db-0"
+  ],
+  "ignoredPods": [
+    {
+      "pod": "Pod/monitoring/node-exporter-a",
+      "reason": "DaemonSet pod; autoscalers do not need to reschedule it"
+    }
+  ],
+  "findings": [
+    {
+      "id": "F1",
+      "rule": "downscaler-vs-hpa-floor",
+      "layer": "replicas",
+      "severity": "warning",
+      "subject": "Deployment/shop/web",
+      "claim": "kube-downscaler sets this workload to 0 replica(s) during downtime, but HPA web has minReplicas=1 and scales it back up. Off-hours savings for this workload are capped by the HPA floor.",
+      "confidence": "medium",
+      "evidence": [
+        {
+          "object": "Pod/shop/web-7d9f8-x2k4p",
+          "field": ".metadata.ownerReferences (controller)",
+          "value": "ReplicaSet/web-7d9f8"
+        },
+        {
+          "object": "ReplicaSet/shop/web-7d9f8",
+          "field": ".metadata.ownerReferences (controller)",
+          "value": "Deployment/web"
+        },
+        {
+          "object": "Deployment/shop/web",
+          "field": ".spec.replicas",
+          "value": "1"
+        },
+        {
+          "object": "Deployment/shop/web",
+          "field": ".metadata.annotations[\"downscaler/downtime-replicas\"]",
+          "value": "0"
+        },
+        {
+          "object": "HorizontalPodAutoscaler/shop/web",
+          "field": ".spec.minReplicas",
+          "value": "1"
+        }
+      ],
+      "unknowns": [
+        "kube-downscaler can also lower an HPA's minReplicas when the HPA itself carries downscaler annotations; none were found on this HPA.",
+        "Whether the snapshot was taken inside the downtime window is unknown."
+      ]
+    },
+    {
+      "id": "F2",
+      "rule": "replica-floor",
+      "layer": "replicas",
+      "severity": "context",
+      "subject": "Deployment/shop/web",
+      "claim": "The workload sits at its HPA floor (minReplicas=1, replicas=1). HPA will not scale it lower, so its 1 pod(s) keep holding 500m CPU and 1.0Gi memory even when idle.",
+      "meaning": "These pods exist because of configuration, not load. Lowering the minimum (or scaling to zero off-hours) is what frees this capacity.",
+      "confidence": "high",
+      "evidence": [
+        {
+          "object": "Pod/shop/web-7d9f8-x2k4p",
+          "field": ".metadata.ownerReferences (controller)",
+          "value": "ReplicaSet/web-7d9f8"
+        },
+        {
+          "object": "ReplicaSet/shop/web-7d9f8",
+          "field": ".metadata.ownerReferences (controller)",
+          "value": "Deployment/web"
+        },
+        {
+          "object": "Deployment/shop/web",
+          "field": ".spec.replicas",
+          "value": "1"
+        },
+        {
+          "object": "HorizontalPodAutoscaler/shop/web",
+          "field": ".spec.minReplicas",
+          "value": "1"
+        }
+      ]
+    },
+    {
+      "id": "F3",
+      "rule": "pdb-zero-disruptions",
+      "layer": "policy",
+      "severity": "blocker",
+      "subject": "Pod/data/db-0",
+      "claim": "PodDisruptionBudget db-pdb currently allows 0 disruptions, so this pod cannot be evicted and the node cannot be drained.",
+      "appliesTo": [
+        "cluster-autoscaler",
+        "karpenter"
+      ],
+      "confidence": "high",
+      "evidence": [
+        {
+          "object": "PodDisruptionBudget/data/db-pdb",
+          "field": ".status.disruptionsAllowed",
+          "value": "0"
+        },
+        {
+          "object": "PodDisruptionBudget/data/db-pdb",
+          "field": ".status.currentHealthy / .status.desiredHealthy",
+          "value": "1 / 1"
+        },
+        {
+          "object": "PodDisruptionBudget/data/db-pdb",
+          "field": ".spec.minAvailable",
+          "value": "1"
+        },
+        {
+          "object": "Pod/data/db-0",
+          "field": ".metadata.labels",
+          "value": "app=db"
+        }
+      ],
+      "alternatives": [
+        "Structural: every healthy pod is needed to satisfy the budget (e.g. minAvailable equals the replica count, or maxUnavailable is 0). It stays at zero until the budget or the replica count changes."
+      ],
+      "unknowns": [
+        "The snapshot is one moment; disruptionsAllowed changes as pods become ready or unready."
+      ]
+    }
+  ],
+  "dataNotes": [
+    "No node autoscaler was found in the snapshot (no Karpenter labels on nodes, no Cluster Autoscaler pods or events). Findings for both are kept, because managed offerings run Cluster Autoscaler outside the cluster. If no autoscaler runs, nothing removes nodes automatically: rerun with --node-autoscaler none to drop autoscaler-specific findings."
+  ],
+  "limitations": [
+    "Snapshot heuristic, not a scheduler simulation: placement checks cover node selectors, required node affinity, taints, required pod (anti-)affinity, topology spread and host ports, but not volume zones, priorities, preemption or preferred rules.",
+    "Autoscaler settings are read where the cluster exposes them (Karpenter NodePools and NodeClaims), not Cluster Autoscaler flags or node group minimums.",
+    "One point in time: PDB status, replica counts and events change.",
+    "Packing is measured with resource requests, not real usage.",
+    "Pod size is judged only where a VPA recommendation exists; other workloads are unknowns.",
+    "Read-only: KubeShrink never modifies a cluster."
+  ]
+}

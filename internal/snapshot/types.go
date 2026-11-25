@@ -10,6 +10,7 @@ package snapshot
 
 import "encoding/json"
 
+// ObjectMeta is the part of an object's metadata that KubeShrink reads.
 type ObjectMeta struct {
 	Name            string            `json:"name"`
 	Namespace       string            `json:"namespace,omitempty"`
@@ -18,6 +19,8 @@ type ObjectMeta struct {
 	OwnerReferences []OwnerReference  `json:"ownerReferences,omitempty"`
 }
 
+// OwnerReference names an owner of an object; Controller marks the one that
+// manages it.
 type OwnerReference struct {
 	Kind       string `json:"kind"`
 	Name       string `json:"name"`
@@ -51,17 +54,20 @@ func HasValue(r json.RawMessage) bool {
 	return true
 }
 
+// Node is a core/v1 Node, with only the fields KubeShrink reads.
 type Node struct {
 	Metadata ObjectMeta `json:"metadata"`
 	Spec     NodeSpec   `json:"spec"`
 	Status   NodeStatus `json:"status"`
 }
 
+// NodeSpec holds whether the node is cordoned, and its taints.
 type NodeSpec struct {
 	Unschedulable bool    `json:"unschedulable,omitempty"`
 	Taints        []Taint `json:"taints,omitempty"`
 }
 
+// Taint keeps pods that do not tolerate it off the node.
 type Taint struct {
 	Key    string `json:"key"`
 	Value  string `json:"value,omitempty"`
@@ -82,16 +88,19 @@ func (t Taint) Restricts() bool {
 	return t.Effect == "NoSchedule" || t.Effect == "NoExecute"
 }
 
+// NodeStatus holds what the node can offer to pods.
 type NodeStatus struct {
 	Allocatable map[string]string `json:"allocatable,omitempty"`
 }
 
+// Pod is a core/v1 Pod, with only the fields KubeShrink reads.
 type Pod struct {
 	Metadata ObjectMeta `json:"metadata"`
 	Spec     PodSpec    `json:"spec"`
 	Status   PodStatus  `json:"status"`
 }
 
+// PodSpec holds where a pod may run, what it requests and the volumes it uses.
 type PodSpec struct {
 	NodeName                  string                     `json:"nodeName,omitempty"`
 	NodeSelector              map[string]string          `json:"nodeSelector,omitempty"`
@@ -104,6 +113,7 @@ type PodSpec struct {
 	Volumes                   []Volume                   `json:"volumes,omitempty"`
 }
 
+// Toleration lets a pod run on nodes with a matching taint.
 type Toleration struct {
 	Key      string `json:"key,omitempty"`
 	Operator string `json:"operator,omitempty"`
@@ -136,6 +146,8 @@ func (p *Pod) Tolerates(taint Taint) bool {
 	return false
 }
 
+// Container holds a container's requests, its restart policy (Always marks a
+// native sidecar) and its ports.
 type Container struct {
 	Name          string               `json:"name"`
 	Resources     ResourceRequirements `json:"resources"`
@@ -147,26 +159,34 @@ type Container struct {
 // containers (a native sidecar, restartPolicy: Always).
 func (c Container) IsSidecar() bool { return c.RestartPolicy == "Always" }
 
+// ContainerPort is a port a container listens on. A host port allows one such
+// pod per node.
 type ContainerPort struct {
 	ContainerPort int32  `json:"containerPort"`
 	HostPort      int32  `json:"hostPort,omitempty"`
 	Protocol      string `json:"protocol,omitempty"`
 }
 
+// ResourceRequirements holds a container's requests. Limits do not affect
+// scheduling, so they are not read.
 type ResourceRequirements struct {
 	Requests map[string]string `json:"requests,omitempty"`
 }
 
+// Volume is a pod volume. Only emptyDir and hostPath matter here, because they
+// keep data on the node.
 type Volume struct {
 	Name     string          `json:"name"`
 	EmptyDir json.RawMessage `json:"emptyDir,omitempty"`
 	HostPath *HostPath       `json:"hostPath,omitempty"`
 }
 
+// HostPath is a hostPath volume source.
 type HostPath struct {
 	Path string `json:"path"`
 }
 
+// PodStatus holds the pod's phase.
 type PodStatus struct {
 	Phase string `json:"phase,omitempty"`
 }
@@ -179,20 +199,26 @@ type Affinity struct {
 	PodAntiAffinity *PodAffinity  `json:"podAntiAffinity,omitempty"`
 }
 
+// NodeAffinity holds a pod's node affinity. Only the required part limits
+// where the pod can go; the preferred part is kept as raw JSON.
 type NodeAffinity struct {
 	Required  *NodeSelector   `json:"requiredDuringSchedulingIgnoredDuringExecution,omitempty"`
 	Preferred json.RawMessage `json:"preferredDuringSchedulingIgnoredDuringExecution,omitempty"`
 }
 
+// NodeSelector is a list of terms, any one of which a node must match.
 type NodeSelector struct {
 	NodeSelectorTerms []NodeSelectorTerm `json:"nodeSelectorTerms"`
 }
 
+// NodeSelectorTerm is a set of requirements that a node must all match.
 type NodeSelectorTerm struct {
 	MatchExpressions []NodeSelectorRequirement `json:"matchExpressions,omitempty"`
 	MatchFields      []NodeSelectorRequirement `json:"matchFields,omitempty"`
 }
 
+// NodeSelectorRequirement is one expression on a node's labels or fields, such
+// as key In (a, b).
 type NodeSelectorRequirement struct {
 	Key      string   `json:"key"`
 	Operator string   `json:"operator"`
@@ -205,6 +231,8 @@ type PodAffinity struct {
 	Preferred json.RawMessage   `json:"preferredDuringSchedulingIgnoredDuringExecution,omitempty"`
 }
 
+// PodAffinityTerm selects the pods that a pod must, or must not, share a
+// topology domain with.
 type PodAffinityTerm struct {
 	LabelSelector     *LabelSelector `json:"labelSelector,omitempty"`
 	Namespaces        []string       `json:"namespaces,omitempty"`
@@ -212,6 +240,8 @@ type PodAffinityTerm struct {
 	TopologyKey       string         `json:"topologyKey"`
 }
 
+// TopologySpreadConstraint keeps matching pods balanced across topology
+// domains, within maxSkew.
 type TopologySpreadConstraint struct {
 	MaxSkew           int32          `json:"maxSkew"`
 	TopologyKey       string         `json:"topologyKey"`
@@ -224,18 +254,22 @@ type TopologySpreadConstraint struct {
 // constraint (whenUnsatisfiable: DoNotSchedule).
 func (t TopologySpreadConstraint) Enforced() bool { return t.WhenUnsatisfiable != "ScheduleAnyway" }
 
+// PodDisruptionBudget is a policy/v1 PodDisruptionBudget.
 type PodDisruptionBudget struct {
 	Metadata ObjectMeta `json:"metadata"`
 	Spec     PDBSpec    `json:"spec"`
 	Status   PDBStatus  `json:"status"`
 }
 
+// PDBSpec selects the pods a budget protects and says how many must stay
+// available.
 type PDBSpec struct {
 	Selector       *LabelSelector  `json:"selector,omitempty"`
 	MinAvailable   json.RawMessage `json:"minAvailable,omitempty"`
 	MaxUnavailable json.RawMessage `json:"maxUnavailable,omitempty"`
 }
 
+// PDBStatus is what the disruption controller last computed for a budget.
 type PDBStatus struct {
 	// DisruptionsAllowed is a pointer so a missing status is not mistaken for 0.
 	DisruptionsAllowed *int32 `json:"disruptionsAllowed,omitempty"`
@@ -244,18 +278,22 @@ type PDBStatus struct {
 	ExpectedPods       int32  `json:"expectedPods,omitempty"`
 }
 
+// CrossVersionObjectReference names the workload an autoscaler or a VPA
+// targets.
 type CrossVersionObjectReference struct {
 	Kind       string `json:"kind"`
 	Name       string `json:"name"`
 	APIVersion string `json:"apiVersion,omitempty"`
 }
 
+// HorizontalPodAutoscaler is an autoscaling/v2 HorizontalPodAutoscaler.
 type HorizontalPodAutoscaler struct {
 	Metadata ObjectMeta `json:"metadata"`
 	Spec     HPASpec    `json:"spec"`
 	Status   HPAStatus  `json:"status"`
 }
 
+// HPASpec holds the workload an HPA scales, its replica range and its metrics.
 type HPASpec struct {
 	ScaleTargetRef CrossVersionObjectReference `json:"scaleTargetRef"`
 	MinReplicas    *int32                      `json:"minReplicas,omitempty"`
@@ -263,6 +301,7 @@ type HPASpec struct {
 	Metrics        []HPAMetric                 `json:"metrics,omitempty"`
 }
 
+// HPAStatus holds an HPA's current and desired replica counts.
 type HPAStatus struct {
 	CurrentReplicas int32 `json:"currentReplicas,omitempty"`
 	DesiredReplicas int32 `json:"desiredReplicas,omitempty"`
@@ -274,6 +313,8 @@ type ScaledObject struct {
 	Spec     ScaledObjectSpec `json:"spec"`
 }
 
+// ScaledObjectSpec holds the workload a KEDA ScaledObject scales and its
+// replica counts.
 type ScaledObjectSpec struct {
 	// ScaleTargetRef.Kind defaults to Deployment when empty.
 	ScaleTargetRef   CrossVersionObjectReference `json:"scaleTargetRef"`
@@ -290,24 +331,31 @@ type VerticalPodAutoscaler struct {
 	Status   VPAStatus  `json:"status"`
 }
 
+// VPASpec holds the workload a VPA targets, how it applies its recommendation
+// and its resource policy.
 type VPASpec struct {
 	TargetRef      CrossVersionObjectReference `json:"targetRef"`
 	UpdatePolicy   *VPAUpdatePolicy            `json:"updatePolicy,omitempty"`
 	ResourcePolicy *VPAResourcePolicy          `json:"resourcePolicy,omitempty"`
 }
 
+// VPAUpdatePolicy holds a VPA's update mode, such as Off, Initial or Auto.
 type VPAUpdatePolicy struct {
 	UpdateMode string `json:"updateMode,omitempty"`
 }
 
+// VPAStatus holds a VPA's latest recommendation.
 type VPAStatus struct {
 	Recommendation *VPARecommendation `json:"recommendation,omitempty"`
 }
 
+// VPARecommendation holds one recommendation per container.
 type VPARecommendation struct {
 	ContainerRecommendations []ContainerRecommendation `json:"containerRecommendations,omitempty"`
 }
 
+// ContainerRecommendation is a VPA's recommended size for one container, with
+// its bounds.
 type ContainerRecommendation struct {
 	ContainerName string            `json:"containerName"`
 	Target        map[string]string `json:"target,omitempty"`
@@ -325,10 +373,12 @@ type Workload struct {
 	Status   WorkloadStatus `json:"status"`
 }
 
+// WorkloadSpec holds a workload's desired replica count.
 type WorkloadSpec struct {
 	Replicas *int32 `json:"replicas,omitempty"`
 }
 
+// WorkloadStatus holds a workload's current replica count.
 type WorkloadStatus struct {
 	Replicas int32 `json:"replicas,omitempty"`
 }
@@ -339,10 +389,13 @@ type LimitRange struct {
 	Spec     LimitRangeSpec `json:"spec"`
 }
 
+// LimitRangeSpec lists the limits of a LimitRange.
 type LimitRangeSpec struct {
 	Limits []LimitRangeItem `json:"limits"`
 }
 
+// LimitRangeItem holds the default requests and limits a LimitRange gives
+// containers that set none.
 type LimitRangeItem struct {
 	Type           string            `json:"type"`
 	Default        map[string]string `json:"default,omitempty"`
@@ -369,11 +422,15 @@ type NodePool struct {
 	Spec     NodePoolSpec `json:"spec"`
 }
 
+// NodePoolSpec holds a Karpenter NodePool's disruption settings and resource
+// limits.
 type NodePoolSpec struct {
 	Disruption NodePoolDisruption `json:"disruption"`
 	Limits     map[string]string  `json:"limits,omitempty"`
 }
 
+// NodePoolDisruption says when Karpenter may consolidate a NodePool's nodes,
+// and how many at once.
 type NodePoolDisruption struct {
 	ConsolidationPolicy string   `json:"consolidationPolicy,omitempty"`
 	ConsolidateAfter    string   `json:"consolidateAfter,omitempty"`
@@ -394,11 +451,13 @@ type NodeClaim struct {
 	Status   NodeClaimStatus `json:"status"`
 }
 
+// NodeClaimStatus holds the node a NodeClaim launched, and its conditions.
 type NodeClaimStatus struct {
 	NodeName   string      `json:"nodeName,omitempty"`
 	Conditions []Condition `json:"conditions,omitempty"`
 }
 
+// Condition is a status condition, such as a NodeClaim's Consolidatable.
 type Condition struct {
 	Type               string `json:"type"`
 	Status             string `json:"status"`
@@ -432,12 +491,14 @@ func (e *Event) Time() string {
 	return ""
 }
 
+// ObjectReference names the object an event is about.
 type ObjectReference struct {
 	Kind      string `json:"kind"`
 	Namespace string `json:"namespace,omitempty"`
 	Name      string `json:"name"`
 }
 
+// EventSource names the component that reported an event.
 type EventSource struct {
 	Component string `json:"component,omitempty"`
 }
@@ -464,10 +525,14 @@ type HPAMetric struct {
 	ContainerResource *HPAContainerResourceSource `json:"containerResource,omitempty"`
 }
 
+// HPAResourceSource is a CPU or memory metric of an HPA, averaged over the
+// pods.
 type HPAResourceSource struct {
 	Name string `json:"name"`
 }
 
+// HPAContainerResourceSource is a CPU or memory metric of an HPA for one
+// container.
 type HPAContainerResourceSource struct {
 	Name      string `json:"name"`
 	Container string `json:"container"`

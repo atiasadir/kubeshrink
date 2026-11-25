@@ -55,6 +55,7 @@ var Resources = []Resource{
 	{schema.GroupVersionResource{Group: "karpenter.sh", Version: "v1", Resource: "nodeclaims"}, "NodeClaim", false, &schema.GroupVersionResource{Group: "karpenter.sh", Version: "v1beta1", Resource: "nodeclaims"}},
 }
 
+// Options says which cluster to read and where to save what was read.
 type Options struct {
 	Kubeconfig string
 	// Context must be named explicitly; there is no fallback to the current context.
@@ -98,6 +99,9 @@ func Load(ctx context.Context, opts Options) (*snapshot.Snapshot, error) {
 	return s, nil
 }
 
+// RESTConfig builds a client configuration for a context that must be named
+// explicitly, from the given kubeconfig file or, when that is empty, from
+// $KUBECONFIG or ~/.kube/config. The current context is never used implicitly.
 func RESTConfig(kubeconfig, contextName string) (*rest.Config, error) {
 	if contextName == "" {
 		return nil, fmt.Errorf("a kubeconfig context must be named explicitly")

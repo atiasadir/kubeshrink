@@ -1,0 +1,5 @@
+NODE       POOL     MANAGED BY  VERDICT  BLOCKERS  POSSIBLE  WARNINGS  CONTEXT  PODS
+general-a  general  karpenter   blocked  1         0         3         2        2
+general-b  general  karpenter   blocked  1         1         3         2        2
+general-c  general  karpenter   blocked  1         0         2         2        2
+ml-a       ml       karpenter   blocked  2         0         0         1        1

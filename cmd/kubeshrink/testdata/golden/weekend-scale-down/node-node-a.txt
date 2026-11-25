@@ -1,0 +1,64 @@
+Node node-a: BLOCKED
+Pool: (no pool label)
+Managed by: unknown
+Requested: 1.6 CPU, 5.1Gi of 4.0 CPU, 16.0Gi allocatable
+1 blocker(s), 0 possible blocker(s), 1 warning(s), 1 context finding(s); 2 pod(s) would need to move.
+
+Pods that would need to move (2):
+  - Pod/shop/web-7d9f8-x2k4p
+  - Pod/data/db-0
+
+Ignored pods:
+  - Pod/monitoring/node-exporter-a (DaemonSet pod; autoscalers do not need to reschedule it)
+
+== REPLICAS: Why do these pods exist?
+
+[F1] WARNING  downscaler-vs-hpa-floor  Deployment/shop/web
+    kube-downscaler sets this workload to 0 replica(s) during downtime, but HPA web has minReplicas=1 and scales it back up. Off-hours savings for this workload are capped by the HPA floor.
+    Confidence: medium
+    Evidence:
+      - Pod/shop/web-7d9f8-x2k4p .metadata.ownerReferences (controller) = ReplicaSet/web-7d9f8
+      - ReplicaSet/shop/web-7d9f8 .metadata.ownerReferences (controller) = Deployment/web
+      - Deployment/shop/web .spec.replicas = 1
+      - Deployment/shop/web .metadata.annotations["downscaler/downtime-replicas"] = 0
+      - HorizontalPodAutoscaler/shop/web .spec.minReplicas = 1
+    Unknowns:
+      - kube-downscaler can also lower an HPA's minReplicas when the HPA itself carries downscaler annotations; none were found on this HPA.
+      - Whether the snapshot was taken inside the downtime window is unknown.
+
+[F2] CONTEXT  replica-floor  Deployment/shop/web
+    The workload sits at its HPA floor (minReplicas=1, replicas=1). HPA will not scale it lower, so its 1 pod(s) keep holding 500m CPU and 1.0Gi memory even when idle.
+    What it means: These pods exist because of configuration, not load. Lowering the minimum (or scaling to zero off-hours) is what frees this capacity.
+    Confidence: high
+    Evidence:
+      - Pod/shop/web-7d9f8-x2k4p .metadata.ownerReferences (controller) = ReplicaSet/web-7d9f8
+      - ReplicaSet/shop/web-7d9f8 .metadata.ownerReferences (controller) = Deployment/web
+      - Deployment/shop/web .spec.replicas = 1
+      - HorizontalPodAutoscaler/shop/web .spec.minReplicas = 1
+
+== POLICY: Where may they run, and may they move?
+
+[F3] BLOCKER  pdb-zero-disruptions  Pod/data/db-0
+    PodDisruptionBudget db-pdb currently allows 0 disruptions, so this pod cannot be evicted and the node cannot be drained.
+    Applies to: cluster-autoscaler, karpenter
+    Confidence: high
+    Evidence:
+      - PodDisruptionBudget/data/db-pdb .status.disruptionsAllowed = 0
+      - PodDisruptionBudget/data/db-pdb .status.currentHealthy / .status.desiredHealthy = 1 / 1
+      - PodDisruptionBudget/data/db-pdb .spec.minAvailable = 1
+      - Pod/data/db-0 .metadata.labels = app=db
+    Other explanations:
+      - Structural: every healthy pod is needed to satisfy the budget (e.g. minAvailable equals the replica count, or maxUnavailable is 0). It stays at zero until the budget or the replica count changes.
+    Unknowns:
+      - The snapshot is one moment; disruptionsAllowed changes as pods become ready or unready.
+
+Data notes:
+  - No node autoscaler was found in the snapshot (no Karpenter labels on nodes, no Cluster Autoscaler pods or events). Findings for both are kept, because managed offerings run Cluster Autoscaler outside the cluster. If no autoscaler runs, nothing removes nodes automatically: rerun with --node-autoscaler none to drop autoscaler-specific findings.
+
+Limitations:
+  - Snapshot heuristic, not a scheduler simulation: placement checks cover node selectors, required node affinity, taints, required pod (anti-)affinity, topology spread and host ports, but not volume zones, priorities, preemption or preferred rules.
+  - Autoscaler settings are read where the cluster exposes them (Karpenter NodePools and NodeClaims), not Cluster Autoscaler flags or node group minimums.
+  - One point in time: PDB status, replica counts and events change.
+  - Packing is measured with resource requests, not real usage.
+  - Pod size is judged only where a VPA recommendation exists; other workloads are unknowns.
+  - Read-only: KubeShrink never modifies a cluster.

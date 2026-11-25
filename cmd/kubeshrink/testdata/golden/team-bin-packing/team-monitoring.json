@@ -1,0 +1,183 @@
+{
+  "namespace": "monitoring",
+  "summary": "monitoring runs 4 pod(s) on 4 node(s) and requests 400m CPU, 512Mi memory. Its share of the idle capacity on those nodes is 952m CPU, 3.1Gi memory, so its packing is 30% CPU and 14% memory. 1 blocker(s), 1 possible blocker(s), 0 warning(s), 1 context finding(s).",
+  "pods": 4,
+  "requested": {
+    "milliCPU": 400,
+    "memoryBytes": 536870912
+  },
+  "idleShare": {
+    "milliCPU": 951.5406162464985,
+    "memoryBytes": 3275004336.0054703
+  },
+  "packingCPU": 0.29595854922279796,
+  "packingMemory": 0.14084167950693374,
+  "nodes": [
+    {
+      "node": "general-a",
+      "pool": "general",
+      "requested": {
+        "milliCPU": 100,
+        "memoryBytes": 134217728
+      },
+      "idleShare": {
+        "milliCPU": 150,
+        "memoryBytes": 552977039.36
+      },
+      "nodePackingCPU": 0.4,
+      "nodePackingMemory": 0.1953125,
+      "alone": false,
+      "verdict": "blocked"
+    },
+    {
+      "node": "general-b",
+      "pool": "general",
+      "requested": {
+        "milliCPU": 100,
+        "memoryBytes": 134217728
+      },
+      "idleShare": {
+        "milliCPU": 150,
+        "memoryBytes": 552977039.36
+      },
+      "nodePackingCPU": 0.4,
+      "nodePackingMemory": 0.1953125,
+      "alone": false,
+      "verdict": "blocked"
+    },
+    {
+      "node": "general-c",
+      "pool": "general",
+      "requested": {
+        "milliCPU": 100,
+        "memoryBytes": 134217728
+      },
+      "idleShare": {
+        "milliCPU": 370.5882352941176,
+        "memoryBytes": 1774656625.7777777
+      },
+      "nodePackingCPU": 0.2125,
+      "nodePackingMemory": 0.0703125,
+      "alone": false,
+      "verdict": "blocked"
+    },
+    {
+      "node": "ml-a",
+      "pool": "ml",
+      "requested": {
+        "milliCPU": 100,
+        "memoryBytes": 134217728
+      },
+      "idleShare": {
+        "milliCPU": 280.95238095238096,
+        "memoryBytes": 394393631.50769234
+      },
+      "nodePackingCPU": 0.2625,
+      "nodePackingMemory": 0.25390625,
+      "alone": false,
+      "verdict": "blocked"
+    }
+  ],
+  "findings": [
+    {
+      "id": "F1",
+      "rule": "karpenter-consolidation-policy",
+      "layer": "nodes",
+      "severity": "blocker",
+      "subject": "Node/ml-a",
+      "claim": "NodePool ml only consolidates empty nodes (consolidationPolicy WhenEmpty). This node runs 1 pod(s) that would need to move, so Karpenter will not remove or replace it for being underused.",
+      "appliesTo": [
+        "karpenter"
+      ],
+      "confidence": "high",
+      "evidence": [
+        {
+          "object": "NodePool/ml",
+          "field": ".spec.disruption.consolidationPolicy",
+          "value": "WhenEmpty"
+        },
+        {
+          "object": "Node/ml-a",
+          "field": ".metadata.labels[\"karpenter.sh/nodepool\"]",
+          "value": "ml"
+        }
+      ],
+      "alternatives": [
+        "Expiry or drift can still replace the node, depending on the NodePool's other settings."
+      ]
+    },
+    {
+      "id": "F2",
+      "rule": "autoscaler-event",
+      "layer": "nodes",
+      "severity": "possible-blocker",
+      "subject": "Node/general-b",
+      "claim": "karpenter reported Unconsolidatable: Can't replace with a cheaper node (seen 6 times)",
+      "meaning": "Karpenter considered this node and found no cheaper replacement. Karpenter tries deleting a node before replacing it, so this usually also means its own simulation could not fit all of the node's pods onto the other nodes.",
+      "appliesTo": [
+        "karpenter"
+      ],
+      "confidence": "high",
+      "evidence": [
+        {
+          "object": "Event/default/general-b.18a1c2",
+          "field": ".reason, .message",
+          "value": "Unconsolidatable: Can't replace with a cheaper node",
+          "time": "2026-11-21T02:55:00Z"
+        },
+        {
+          "object": "Event/default/general-b-x2.18a1c3",
+          "field": ".reason, .message",
+          "value": "Unconsolidatable: Can't replace with a cheaper node",
+          "time": "2026-11-21T02:55:00Z"
+        }
+      ],
+      "unknowns": [
+        "Last seen 5m0s before the snapshot was taken."
+      ]
+    },
+    {
+      "id": "F3",
+      "rule": "karpenter-not-consolidatable-yet",
+      "layer": "nodes",
+      "severity": "context",
+      "subject": "Node/general-c",
+      "claim": "Karpenter has not marked this node consolidatable yet, so it does not consider removing or replacing it. NodePool general waits consolidateAfter (1m) after pods were last added to or removed from a node.",
+      "appliesTo": [
+        "karpenter"
+      ],
+      "confidence": "medium",
+      "evidence": [
+        {
+          "object": "NodeClaim/general-c-x3",
+          "field": ".status.conditions[Consolidatable].status",
+          "value": "False",
+          "time": "2026-11-21T02:59:30Z"
+        },
+        {
+          "object": "NodePool/general",
+          "field": ".spec.disruption.consolidateAfter",
+          "value": "1m"
+        }
+      ],
+      "unknowns": [
+        "Frequent pod churn on the node keeps restarting this wait."
+      ]
+    }
+  ],
+  "otherTenantFindings": 4,
+  "vpaCoverage": {
+    "workloads": 0,
+    "withVPA": 0,
+    "withRecommendation": 0,
+    "oversized": 0
+  },
+  "limitations": [
+    "Snapshot heuristic, not a scheduler simulation: placement checks cover node selectors, required node affinity, taints, required pod (anti-)affinity, topology spread and host ports, but not volume zones, priorities, preemption or preferred rules.",
+    "Autoscaler settings are read where the cluster exposes them (Karpenter NodePools and NodeClaims), not Cluster Autoscaler flags or node group minimums.",
+    "One point in time: PDB status, replica counts and events change.",
+    "Packing is measured with resource requests, not real usage.",
+    "Pod size is judged only where a VPA recommendation exists; other workloads are unknowns.",
+    "Read-only: KubeShrink never modifies a cluster."
+  ]
+}

@@ -1,0 +1,2 @@
+# Written by `make goldens`; GitHub collapses them in diffs.
+cmd/kubeshrink/testdata/golden/** linguist-generated=true

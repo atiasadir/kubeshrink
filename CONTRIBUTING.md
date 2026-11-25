@@ -19,10 +19,26 @@ make example  # run against the synthetic example
 
 ## Adding a rule
 
-1. Write a `func(*nodeContext) []Finding` in `internal/explain`.
-2. Add it to `Catalog` in `internal/explain/catalog.go` with a plain-language explanation.
-3. Add positive and negative cases to the table in `internal/explain/explain_test.go`.
-4. Describe it in the rules table in `docs/DESIGN.md` and note it in `CHANGELOG.md`.
+1. Write the check in `internal/explain`: a `func(*nodeContext) []Finding` for a node, or a `func(*nsContext) []Finding` for a namespace. Start it with a short comment that says what it looks at and why that keeps capacity.
+2. Add it to `Catalog` in `internal/explain/catalog.go` with a title and a plain-language explanation.
+3. Add a case where it fires and a case where it must not to `ruleCases` in `internal/explain/explain_test.go`. `TestEveryRuleHasCases` fails until both exist.
+4. If an example under `examples/` triggers the rule, run `make goldens` and review the diff (see below).
+5. Describe it in the rules table in `docs/DESIGN.md` and add an entry under *Unreleased* in `CHANGELOG.md`.
+
+## Golden files
+
+`cmd/kubeshrink/testdata/golden` holds what `explain cluster`, `explain nodes`, `explain node` and `explain team` print for every example snapshot, as text and as JSON. `make test` compares the current output with these files, so a change to a finding, a number or the wording shows up in review.
+
+After an intended change:
+
+```sh
+make goldens                              # rewrite the files; removes ones nothing produces any more
+git diff cmd/kubeshrink/testdata/golden   # every changed line should follow from your change
+```
+
+Never edit golden files by hand. A new directory under `examples/` gets its golden files the first time you run `make goldens`.
+
+Metric names, types and labels are pinned by `TestMetricsContract` in `internal/serve/contract_test.go`. Dashboards and alerts depend on them, so change them only on purpose, together with `docs/metrics.md` and `CHANGELOG.md`.
 
 ## Pull requests
 

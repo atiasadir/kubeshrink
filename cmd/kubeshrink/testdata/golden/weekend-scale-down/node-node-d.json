@@ -1,0 +1,136 @@
+{
+  "node": "node-d",
+  "pool": "(no pool label)",
+  "managedBy": "unknown",
+  "verdict": "no-blocker-found",
+  "summary": "0 blocker(s), 0 possible blocker(s), 1 warning(s), 2 context finding(s); 1 pod(s) would need to move. No rule found a reason this node must stay. That is not proof it is removable; see the limitations.",
+  "allocatable": {
+    "milliCPU": 4000,
+    "memoryBytes": 17179869184,
+    "pods": 110
+  },
+  "requested": {
+    "milliCPU": 600,
+    "memoryBytes": 1207959552,
+    "pods": 2
+  },
+  "podsToMove": [
+    "Pod/shop/worker-5c6b7-z9m1n"
+  ],
+  "ignoredPods": [
+    {
+      "pod": "Pod/monitoring/node-exporter-d",
+      "reason": "DaemonSet pod; autoscalers do not need to reschedule it"
+    }
+  ],
+  "findings": [
+    {
+      "id": "F1",
+      "rule": "keda-hpa-conflict",
+      "layer": "replicas",
+      "severity": "warning",
+      "subject": "Deployment/shop/worker",
+      "claim": "The workload is targeted by a KEDA ScaledObject and by a separate HPA. KEDA manages its own HPA, so two HPAs act on the same replica count and can hold it above what either intends.",
+      "confidence": "high",
+      "evidence": [
+        {
+          "object": "Pod/shop/worker-5c6b7-z9m1n",
+          "field": ".metadata.ownerReferences (controller)",
+          "value": "ReplicaSet/worker-5c6b7"
+        },
+        {
+          "object": "Deployment/shop/worker",
+          "field": ".spec.replicas",
+          "value": "2"
+        },
+        {
+          "object": "ScaledObject/shop/worker",
+          "field": ".spec.scaleTargetRef",
+          "value": "Deployment/shop/worker"
+        },
+        {
+          "object": "HorizontalPodAutoscaler/shop/worker",
+          "field": ".spec.scaleTargetRef",
+          "value": "Deployment/shop/worker"
+        }
+      ],
+      "alternatives": [
+        "If the extra HPA was created by KEDA under a non-standard name, this is a false positive; check its ownerReferences."
+      ],
+      "unknowns": [
+        "The Deployment name was inferred from the ReplicaSet name because the ReplicaSet is not in the snapshot."
+      ]
+    },
+    {
+      "id": "F2",
+      "rule": "replica-floor",
+      "layer": "replicas",
+      "severity": "context",
+      "subject": "Deployment/shop/worker",
+      "claim": "The workload sits at its KEDA floor (minReplicaCount=2, replicas=2). KEDA will not scale it lower, so its 2 pod(s) keep holding 1.0 CPU and 2.0Gi memory even when idle.",
+      "meaning": "These pods exist because of configuration, not load. Lowering the minimum (or scaling to zero off-hours) is what frees this capacity.",
+      "confidence": "high",
+      "evidence": [
+        {
+          "object": "Pod/shop/worker-5c6b7-z9m1n",
+          "field": ".metadata.ownerReferences (controller)",
+          "value": "ReplicaSet/worker-5c6b7"
+        },
+        {
+          "object": "Deployment/shop/worker",
+          "field": ".spec.replicas",
+          "value": "2"
+        },
+        {
+          "object": "ScaledObject/shop/worker",
+          "field": ".spec.minReplicaCount",
+          "value": "2"
+        }
+      ],
+      "unknowns": [
+        "The Deployment name was inferred from the ReplicaSet name because the ReplicaSet is not in the snapshot."
+      ]
+    },
+    {
+      "id": "F3",
+      "rule": "replica-floor",
+      "layer": "replicas",
+      "severity": "context",
+      "subject": "Deployment/shop/worker",
+      "claim": "The workload sits at its HPA floor (minReplicas=2, replicas=2). HPA will not scale it lower, so its 2 pod(s) keep holding 1.0 CPU and 2.0Gi memory even when idle.",
+      "meaning": "These pods exist because of configuration, not load. Lowering the minimum (or scaling to zero off-hours) is what frees this capacity.",
+      "confidence": "high",
+      "evidence": [
+        {
+          "object": "Pod/shop/worker-5c6b7-z9m1n",
+          "field": ".metadata.ownerReferences (controller)",
+          "value": "ReplicaSet/worker-5c6b7"
+        },
+        {
+          "object": "Deployment/shop/worker",
+          "field": ".spec.replicas",
+          "value": "2"
+        },
+        {
+          "object": "HorizontalPodAutoscaler/shop/worker",
+          "field": ".spec.minReplicas",
+          "value": "2"
+        }
+      ],
+      "unknowns": [
+        "The Deployment name was inferred from the ReplicaSet name because the ReplicaSet is not in the snapshot."
+      ]
+    }
+  ],
+  "dataNotes": [
+    "No node autoscaler was found in the snapshot (no Karpenter labels on nodes, no Cluster Autoscaler pods or events). Findings for both are kept, because managed offerings run Cluster Autoscaler outside the cluster. If no autoscaler runs, nothing removes nodes automatically: rerun with --node-autoscaler none to drop autoscaler-specific findings."
+  ],
+  "limitations": [
+    "Snapshot heuristic, not a scheduler simulation: placement checks cover node selectors, required node affinity, taints, required pod (anti-)affinity, topology spread and host ports, but not volume zones, priorities, preemption or preferred rules.",
+    "Autoscaler settings are read where the cluster exposes them (Karpenter NodePools and NodeClaims), not Cluster Autoscaler flags or node group minimums.",
+    "One point in time: PDB status, replica counts and events change.",
+    "Packing is measured with resource requests, not real usage.",
+    "Pod size is judged only where a VPA recommendation exists; other workloads are unknowns.",
+    "Read-only: KubeShrink never modifies a cluster."
+  ]
+}

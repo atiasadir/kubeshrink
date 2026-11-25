@@ -1,0 +1,87 @@
+{
+  "node": "node-b",
+  "pool": "(no pool label)",
+  "managedBy": "unknown",
+  "verdict": "blocked",
+  "summary": "1 blocker(s), 1 possible blocker(s), 0 warning(s), 0 context finding(s); 1 pod(s) would need to move.",
+  "allocatable": {
+    "milliCPU": 4000,
+    "memoryBytes": 17179869184,
+    "pods": 110
+  },
+  "requested": {
+    "milliCPU": 600,
+    "memoryBytes": 1207959552,
+    "pods": 2
+  },
+  "podsToMove": [
+    "Pod/batch/adhoc-report"
+  ],
+  "ignoredPods": [
+    {
+      "pod": "Pod/monitoring/node-exporter-b",
+      "reason": "DaemonSet pod; autoscalers do not need to reschedule it"
+    },
+    {
+      "pod": "Pod/batch/nightly-export-29384756-abcde",
+      "reason": "finished (phase Succeeded); nothing to move"
+    }
+  ],
+  "findings": [
+    {
+      "id": "F1",
+      "rule": "pod-without-controller",
+      "layer": "policy",
+      "severity": "blocker",
+      "subject": "Pod/batch/adhoc-report",
+      "claim": "The pod has no controller, so nothing would recreate it elsewhere. Cluster Autoscaler keeps the node unless the pod is annotated safe-to-evict=true.",
+      "appliesTo": [
+        "cluster-autoscaler"
+      ],
+      "confidence": "high",
+      "evidence": [
+        {
+          "object": "Pod/batch/adhoc-report",
+          "field": ".metadata.ownerReferences",
+          "value": "no entry with controller=true"
+        }
+      ],
+      "unknowns": [
+        "Karpenter's handling of controller-less pods differs from Cluster Autoscaler's and has changed across versions; check its DisruptionBlocked events."
+      ]
+    },
+    {
+      "id": "F2",
+      "rule": "local-storage",
+      "layer": "policy",
+      "severity": "possible-blocker",
+      "subject": "Pod/batch/adhoc-report",
+      "claim": "The pod uses local storage (emptyDir or hostPath). Cluster Autoscaler skips nodes with such pods when --skip-nodes-with-local-storage is enabled.",
+      "appliesTo": [
+        "cluster-autoscaler"
+      ],
+      "confidence": "medium",
+      "evidence": [
+        {
+          "object": "Pod/batch/adhoc-report",
+          "field": ".spec.volumes[scratch].emptyDir",
+          "value": "set"
+        }
+      ],
+      "unknowns": [
+        "The Cluster Autoscaler flag value is not in the snapshot."
+      ]
+    }
+  ],
+  "dataNotes": [
+    "No node autoscaler was found in the snapshot (no Karpenter labels on nodes, no Cluster Autoscaler pods or events). Findings for both are kept, because managed offerings run Cluster Autoscaler outside the cluster. If no autoscaler runs, nothing removes nodes automatically: rerun with --node-autoscaler none to drop autoscaler-specific findings."
+  ],
+  "limitations": [
+    "Snapshot heuristic, not a scheduler simulation: placement checks cover node selectors, required node affinity, taints, required pod (anti-)affinity, topology spread and host ports, but not volume zones, priorities, preemption or preferred rules.",
+    "Autoscaler settings are read where the cluster exposes them (Karpenter NodePools and NodeClaims), not Cluster Autoscaler flags or node group minimums.",
+    "One point in time: PDB status, replica counts and events change.",
+    "Packing is measured with resource requests, not real usage.",
+    "Pod size is judged only where a VPA recommendation exists; other workloads are unknowns.",
+    "Read-only: KubeShrink never modifies a cluster."
+  ]
+}

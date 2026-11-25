@@ -1,0 +1,252 @@
+{
+  "summary": "4 node(s) run; by requests alone their pods would fit on 2. Pods request 37% of allocatable CPU and 26% of memory. Verdicts: 3 blocked, 0 possibly blocked, 1 with no blocker found.",
+  "nodes": 4,
+  "nodesNeeded": 2,
+  "allocatable": {
+    "milliCPU": 16000,
+    "memoryBytes": 68719476736
+  },
+  "requested": {
+    "milliCPU": 5900,
+    "memoryBytes": 17716740096
+  },
+  "packingCPU": 0.36875,
+  "packingMemory": 0.2578125,
+  "pools": [
+    {
+      "pool": "(no pool label)",
+      "nodes": 4,
+      "emptyNodes": 0,
+      "allocatable": {
+        "milliCPU": 16000,
+        "memoryBytes": 68719476736
+      },
+      "requested": {
+        "milliCPU": 5900,
+        "memoryBytes": 17716740096
+      },
+      "minNodes": 2
+    }
+  ],
+  "managedBy": {
+    "unknown": 4
+  },
+  "verdicts": {
+    "blocked": 3,
+    "no-blocker-found": 1
+  },
+  "topReasons": [
+    {
+      "rule": "karpenter-do-not-disrupt",
+      "layer": "policy",
+      "title": "Karpenter do-not-disrupt annotation",
+      "severity": "blocker",
+      "nodes": [
+        "node-c"
+      ],
+      "example": "The pod is annotated karpenter.sh/do-not-disrupt=true. Karpenter will not voluntarily disrupt a node running it, so the node stays until the pod finishes or the annotation is removed."
+    },
+    {
+      "rule": "no-room-elsewhere",
+      "layer": "policy",
+      "title": "No other node can take a pod",
+      "severity": "blocker",
+      "nodes": [
+        "node-c"
+      ],
+      "example": "The other nodes say no because of: node selector on 3 node(s)."
+    },
+    {
+      "rule": "pdb-zero-disruptions",
+      "layer": "policy",
+      "title": "PodDisruptionBudget allows zero disruptions",
+      "severity": "blocker",
+      "nodes": [
+        "node-a"
+      ],
+      "example": "PodDisruptionBudget db-pdb currently allows 0 disruptions, so this pod cannot be evicted and the node cannot be drained."
+    },
+    {
+      "rule": "pod-without-controller",
+      "layer": "policy",
+      "title": "Pod without a controller",
+      "severity": "blocker",
+      "nodes": [
+        "node-b"
+      ],
+      "example": "The pod has no controller, so nothing would recreate it elsewhere. Cluster Autoscaler keeps the node unless the pod is annotated safe-to-evict=true."
+    },
+    {
+      "rule": "autoscaler-event",
+      "layer": "nodes",
+      "title": "What the autoscaler itself reported",
+      "severity": "possible-blocker",
+      "nodes": [
+        "node-c"
+      ],
+      "example": "A karpenter.sh/do-not-disrupt annotation blocks voluntary disruption."
+    },
+    {
+      "rule": "local-storage",
+      "layer": "policy",
+      "title": "Pod uses emptyDir or hostPath storage",
+      "severity": "possible-blocker",
+      "nodes": [
+        "node-b"
+      ],
+      "example": "The pod uses local storage (emptyDir or hostPath). Cluster Autoscaler skips nodes with such pods when --skip-nodes-with-local-storage is enabled."
+    },
+    {
+      "rule": "utilization-above-threshold",
+      "layer": "nodes",
+      "title": "Node too busy to be a scale-down candidate",
+      "severity": "possible-blocker",
+      "nodes": [
+        "node-c"
+      ],
+      "example": "Pods on this node request 78% of its CPU and 57% of its memory. Cluster Autoscaler only considers nodes below --scale-down-utilization-threshold (0.5 by default), so it may never evaluate this node for removal."
+    }
+  ],
+  "replicaFloors": [
+    {
+      "controller": "hpa",
+      "min": 1,
+      "workloads": 1,
+      "pods": 1,
+      "requested": {
+        "milliCPU": 500,
+        "memoryBytes": 1073741824,
+        "pods": 1
+      }
+    },
+    {
+      "controller": "hpa",
+      "min": 2,
+      "workloads": 1,
+      "pods": 2,
+      "requested": {
+        "milliCPU": 1000,
+        "memoryBytes": 2147483648,
+        "pods": 2
+      }
+    },
+    {
+      "controller": "keda",
+      "min": 2,
+      "workloads": 1,
+      "pods": 2,
+      "requested": {
+        "milliCPU": 1000,
+        "memoryBytes": 2147483648,
+        "pods": 2
+      }
+    }
+  ],
+  "size": {
+    "vpaCoverage": {
+      "workloads": 4,
+      "withVPA": 1,
+      "withRecommendation": 0,
+      "oversized": 0
+    },
+    "aboveTargets": {
+      "milliCPU": 0,
+      "memoryBytes": 0
+    },
+    "containersWithTargets": 0,
+    "nodesNeededAtTargets": 2
+  },
+  "namespaces": [
+    {
+      "namespace": "shop",
+      "pods": 3,
+      "nodes": 3,
+      "requested": {
+        "milliCPU": 1500,
+        "memoryBytes": 3221225472
+      },
+      "idleShare": {
+        "milliCPU": 3728.494623655914,
+        "memoryBytes": 17284664345.127666
+      },
+      "packingCPU": 0.28688946015424166,
+      "packingMemory": 0.1570878172430953,
+      "pinnedWorkloads": 2
+    },
+    {
+      "namespace": "batch",
+      "pods": 1,
+      "nodes": 1,
+      "requested": {
+        "milliCPU": 500,
+        "memoryBytes": 1073741824
+      },
+      "idleShare": {
+        "milliCPU": 2833.3333333333335,
+        "memoryBytes": 14197253006.222221
+      },
+      "packingCPU": 0.15,
+      "packingMemory": 0.0703125,
+      "pinnedWorkloads": 0
+    },
+    {
+      "namespace": "data",
+      "pods": 1,
+      "nodes": 1,
+      "requested": {
+        "milliCPU": 1000,
+        "memoryBytes": 4294967296
+      },
+      "idleShare": {
+        "milliCPU": 1500,
+        "memoryBytes": 9113711091.512196
+      },
+      "packingCPU": 0.4,
+      "packingMemory": 0.3203125,
+      "pinnedWorkloads": 0
+    },
+    {
+      "namespace": "monitoring",
+      "pods": 4,
+      "nodes": 4,
+      "requested": {
+        "milliCPU": 400,
+        "memoryBytes": 536870912
+      },
+      "idleShare": {
+        "milliCPU": 1312.3655913978494,
+        "memoryBytes": 3935239668.918736
+      },
+      "packingCPU": 0.23359497645211932,
+      "packingMemory": 0.12004866657159158,
+      "pinnedWorkloads": 0
+    },
+    {
+      "namespace": "ml",
+      "pods": 1,
+      "nodes": 1,
+      "requested": {
+        "milliCPU": 2500,
+        "memoryBytes": 8589934592
+      },
+      "idleShare": {
+        "milliCPU": 725.8064516129032,
+        "memoryBytes": 6471868528.219178
+      },
+      "packingCPU": 0.7749999999999999,
+      "packingMemory": 0.5703125,
+      "pinnedWorkloads": 0
+    }
+  ],
+  "dataNotes": [
+    "No node autoscaler was found in the snapshot (no Karpenter labels on nodes, no Cluster Autoscaler pods or events). Findings for both are kept, because managed offerings run Cluster Autoscaler outside the cluster. If no autoscaler runs, nothing removes nodes automatically: rerun with --node-autoscaler none to drop autoscaler-specific findings."
+  ],
+  "limitations": [
+    "Snapshot heuristic, not a scheduler simulation: placement checks cover node selectors, required node affinity, taints, required pod (anti-)affinity, topology spread and host ports, but not volume zones, priorities, preemption or preferred rules.",
+    "Autoscaler settings are read where the cluster exposes them (Karpenter NodePools and NodeClaims), not Cluster Autoscaler flags or node group minimums.",
+    "One point in time: PDB status, replica counts and events change.",
+    "Packing is measured with resource requests, not real usage.",
+    "Pod size is judged only where a VPA recommendation exists; other workloads are unknowns.",
+    "Read-only: KubeShrink never modifies a cluster."
+  ]
+}
