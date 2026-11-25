@@ -117,6 +117,12 @@ var Catalog = []Rule{
 		nodeCheck:   checkKubeSystem,
 	},
 	{
+		ID: "control-plane-node", Layer: LayerNodes,
+		Title:       "Control-plane node",
+		Explanation: "node-role.kubernetes.io/control-plane (or the older node-role.kubernetes.io/master) marks a node that runs the control plane. No node autoscaler removes it, so it is reported as managed by none, and the cluster's counts and metrics leave it out. When every node is a control-plane node, as in a single-node local cluster, they run the workloads and count like any other.",
+		nodeCheck:   checkControlPlane,
+	},
+	{
 		ID: "ca-scale-down-disabled", Layer: LayerNodes,
 		Title:       "Cluster Autoscaler scale-down disabled on the node",
 		Explanation: "cluster-autoscaler.kubernetes.io/scale-down-disabled=true on a node excludes it from Cluster Autoscaler scale-down.",

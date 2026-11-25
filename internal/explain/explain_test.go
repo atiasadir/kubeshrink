@@ -567,6 +567,37 @@ var ruleCases = []ruleCase{
 		snap:    func() *snapshot.Snapshot { return withEvent("n2") },
 		notWant: []string{"autoscaler-event"},
 	},
+	{
+		name: "a control-plane node in a cluster with other nodes",
+		snap: func() *snapshot.Snapshot {
+			s := base(pod("ns", "p", "n1", "100m", "128Mi", annotate(annKarpenterDoNotDisrupt, "true")))
+			s.Nodes[0].Metadata.Labels["node-role.kubernetes.io/control-plane"] = ""
+			return s
+		},
+		want:    map[string]Severity{"control-plane-node": Blocker},
+		notWant: []string{"karpenter-do-not-disrupt"}, // not autoscaled: autoscaler-only findings are dropped
+	},
+	{
+		name: "a control-plane node with only the older master label",
+		snap: func() *snapshot.Snapshot {
+			s := base()
+			s.Nodes[0].Metadata.Labels["node-role.kubernetes.io/master"] = "true"
+			return s
+		},
+		want: map[string]Severity{"control-plane-node": Blocker},
+	},
+	{
+		name: "every node is a control-plane node, as in a single-node kind cluster",
+		snap: func() *snapshot.Snapshot {
+			s := base(pod("ns", "p", "n1", "100m", "128Mi", annotate(annKarpenterDoNotDisrupt, "true")))
+			for i := range s.Nodes {
+				s.Nodes[i].Metadata.Labels["node-role.kubernetes.io/control-plane"] = ""
+			}
+			return s
+		},
+		want:    map[string]Severity{"karpenter-do-not-disrupt": Blocker},
+		notWant: []string{"control-plane-node"},
+	},
 }
 
 func TestRules(t *testing.T) {

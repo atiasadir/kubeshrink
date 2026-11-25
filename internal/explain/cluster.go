@@ -34,7 +34,10 @@ type ClusterReport struct {
 	Size          SizeSummary          `json:"size"`
 	Namespaces    []NamespaceLine      `json:"namespaces"`
 	// OmittedNamespaces counts namespaces left out by Truncate.
-	OmittedNamespaces int      `json:"omittedNamespaces,omitempty"`
+	OmittedNamespaces int `json:"omittedNamespaces,omitempty"`
+	// ControlPlaneNodes are the control-plane nodes that every number above
+	// leaves out, because no node autoscaler removes them.
+	ControlPlaneNodes []string `json:"controlPlaneNodes,omitempty"`
 	DataNotes         []string `json:"dataNotes,omitempty"`
 	Limitations       []string `json:"limitations"`
 }
@@ -144,10 +147,10 @@ func (a *Analyzer) Cluster() *ClusterReport {
 	pinned := a.Pinned()
 	r := &ClusterReport{
 		TakenAt: s.TakenAt, ServerVersion: s.ServerVersion,
-		Nodes: len(s.Nodes), Allocatable: alloc, Requested: req,
+		Nodes: len(a.att.Nodes), Allocatable: alloc, Requested: req,
 		Pools: a.att.Pools(), ManagedBy: map[string]int{}, Verdicts: map[string]int{},
 		TopReasons: []Reason{}, ReplicaFloors: groupFloors(pinned), Namespaces: []NamespaceLine{},
-		Limitations: Limitations,
+		ControlPlaneNodes: a.ControlPlaneNodes(), Limitations: Limitations,
 	}
 	r.PackingCPU, r.PackingMemory = capacity.Ratio(req, alloc)
 	for _, p := range r.Pools {
@@ -169,7 +172,7 @@ func (a *Analyzer) sizeAtVPATargets(nodesNeeded int) SizeSummary {
 	size := SizeSummary{VPA: coverage(a.Sizes(), ""), AboveTargets: above, ContainersWithTargets: changed, NodesNeededAtTargets: nodesNeeded}
 	if changed > 0 {
 		size.NodesNeededAtTargets = 0
-		for _, p := range capacity.Attribute(mod).Pools() {
+		for _, p := range capacity.AttributeNodes(mod, a.counted).Pools() {
 			size.NodesNeededAtTargets += p.MinNodes
 		}
 	}
@@ -181,7 +184,7 @@ func (a *Analyzer) sizeAtVPATargets(nodesNeeded int) SizeSummary {
 func (a *Analyzer) addNodeFindings(r *ClusterReport) {
 	reasons := map[string]*Reason{}
 	perNode := map[string]int{} // per node autoscaler: nodes that carry a per-node note
-	for _, nr := range a.Nodes() {
+	for _, nr := range a.CountedNodes() {
 		r.ManagedBy[nr.ManagedBy]++
 		r.Verdicts[nr.Verdict]++
 		for _, n := range nr.DataNotes {
@@ -298,9 +301,13 @@ func (a *Analyzer) nodePoolSettings() []NodePoolSettings {
 
 // clusterSummary is the one-paragraph summary at the top of the report.
 func clusterSummary(r *ClusterReport) string {
-	return fmt.Sprintf("%d node(s) run; by requests alone their pods would fit on %d. Pods request %s of allocatable CPU and %s of memory. Verdicts: %d blocked, %d possibly blocked, %d with no blocker found.",
+	s := fmt.Sprintf("%d node(s) run; by requests alone their pods would fit on %d. Pods request %s of allocatable CPU and %s of memory. Verdicts: %d blocked, %d possibly blocked, %d with no blocker found.",
 		r.Nodes, r.NodesNeeded, pct(r.PackingCPU), pct(r.PackingMemory),
 		r.Verdicts[VerdictBlocked], r.Verdicts[VerdictPossiblyBlocked], r.Verdicts[VerdictNoBlockerFound])
+	if n := len(r.ControlPlaneNodes); n > 0 {
+		s += fmt.Sprintf(" %d control-plane node(s) are not counted: no node autoscaler removes them.", n)
+	}
+	return s
 }
 
 // Truncate keeps the first n namespaces; n <= 0 keeps them all.

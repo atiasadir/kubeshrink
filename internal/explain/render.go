@@ -196,6 +196,9 @@ func WriteClusterText(w io.Writer, r *ClusterReport) error {
 			cores(p.Requested.MilliCPU), cores(p.Allocatable.MilliCPU), pct(cpu), memStr(p.Requested.MemoryBytes), memStr(p.Allocatable.MemoryBytes), pct(mem))
 	}
 	_ = tw.Flush()
+	if len(r.ControlPlaneNodes) > 0 {
+		fmt.Fprintf(b, "  Not counted: %d control-plane node(s), which no node autoscaler removes: %s\n", len(r.ControlPlaneNodes), joinMax(r.ControlPlaneNodes, 6))
+	}
 	managers := make([]string, 0, len(r.ManagedBy))
 	for m := range r.ManagedBy {
 		managers = append(managers, m)

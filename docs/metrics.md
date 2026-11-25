@@ -29,6 +29,8 @@ Labels hold verdicts, node pools, rule IDs, namespaces and controller kinds, nev
 | `kubeshrink_scan_errors_total` | counter | `resource` | Lists that failed, by resource. Kinds the cluster does not serve, such as Karpenter's when Karpenter is not installed, are not errors |
 | `kubeshrink_build_info` | gauge | `version`, `revision` | Always 1 |
 
+Control-plane nodes (labelled `node-role.kubernetes.io/control-plane`, or the older `node-role.kubernetes.io/master`) are not in `kubeshrink_nodes`, `kubeshrink_nodes_needed` or `kubeshrink_blocked_nodes`, because no node autoscaler removes them. When every node is a control-plane node, as in a single-node local cluster, they count like any other node.
+
 A successful scan replaces all the gauges at once, so a scrape never mixes two scans. When a scan fails, the resource it could not list is counted in `kubeshrink_scan_errors_total` and the gauges keep the previous scan's values; `kubeshrink_last_successful_scan_timestamp_seconds` tells how old they are. When a list fails but the scan can go on without it, the resource is counted too, and the findings that need it are missing. The values change only once per scan, so scraping every minute or so is plenty.
 
 ## Scraping

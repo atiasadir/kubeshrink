@@ -58,6 +58,7 @@ All capacity numbers use resource requests, never real usage.
 - **Team packing** is the namespace's requests divided by requests plus idle share.
 - **Nodes needed** is, per pool, how many of the pool's nodes would hold its pods if they were packed by requests alone (largest pods first, onto the largest nodes, keeping each node's DaemonSet and static pods). Placement rules are ignored, so it is a lower bound, not a plan; the gap between it and the nodes running is what the rules then explain.
 - **Nodes needed at VPA targets** repeats that estimate with every container that has a VPA target requesting the target, and actual requests everywhere else. It never uses the lower bound: memory set below real usage risks OOM kills.
+- **Control-plane nodes** (labelled `node-role.kubernetes.io/control-plane`, or the older `node-role.kubernetes.io/master`) are left out of all of these numbers and of the metrics, because no node autoscaler removes them. When every node is a control-plane node, as in a single-node kind, minikube or Docker Desktop cluster, they run the workloads and count like any other node.
 
 Pools are read from the first of these node labels that is set: `karpenter.sh/nodepool`, `cloud.google.com/gke-nodepool`, `eks.amazonaws.com/nodegroup`, `agentpool`, `kops.k8s.io/instancegroup`.
 
@@ -157,6 +158,7 @@ Run `kubeshrink rules` (or `rules -o json`) for the authoritative list.
 | policy | `pod-without-controller` | Nothing would recreate this pod elsewhere. | blocker (CA) |
 | policy | `local-storage` | emptyDir/hostPath may block CA, depending on a flag we cannot see. | possible blocker (CA) |
 | policy | `kube-system-pod` | A system pod without a PDB may block CA, depending on a flag. | possible blocker (CA) |
+| nodes | `control-plane-node` | The node runs the control plane, which no node autoscaler removes; the cluster view and the metrics leave it out. Not reported when every node is a control-plane node. | blocker |
 | nodes | `ca-scale-down-disabled` | The node opted out of Cluster Autoscaler scale-down. | blocker (CA) |
 | nodes | `utilization-above-threshold` | The node is too busy for CA to consider it (default 50%). | possible blocker (CA) |
 | nodes | `karpenter-consolidation-policy` | The NodePool only consolidates empty nodes, and this one has pods to move. | blocker (Karpenter) |
@@ -168,6 +170,7 @@ Run `kubeshrink rules` (or `rules -o json`) for the authoritative list.
 
 ### Which autoscaler manages a node
 
+- A control-plane node has none, as long as the cluster has other nodes: it is reported as managed by `none`, with the `control-plane-node` blocker, and autoscaler-specific findings are dropped for it.
 - A node with a `karpenter.sh/nodepool` label (or the older `karpenter.sh/provisioner-name`) is Karpenter-managed: Cluster Autoscaler-only findings are dropped for it.
 - Otherwise, if Cluster Autoscaler's pods, workload or events are in the snapshot, the node is CA-managed: Karpenter-only findings are dropped.
 - Otherwise the manager is `unknown` and findings for both are kept, with a note. Managed offerings run Cluster Autoscaler outside the cluster, so not seeing it proves nothing.
