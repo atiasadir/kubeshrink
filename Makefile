@@ -42,16 +42,28 @@ example: build ## Explain the synthetic weekend example
 
 # Any well-formed digest, to check how the chart renders a pinned image.
 CHART_TEST_DIGEST := sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+# The released image, and the release the chart installs by default.
+RELEASE_IMAGE     := ghcr.io/atiasadir/kubeshrink
+CHART_APP_VERSION := $(shell awk -F': *' '$$1 == "appVersion" { gsub(/"/, "", $$2); print $$2 }' charts/kubeshrink/Chart.yaml)
 
 chart: ## Lint the Helm chart, render it with each monitor and check the image reference
 	helm lint --strict charts/kubeshrink
 	helm template kubeshrink charts/kubeshrink > /dev/null
 	helm template kubeshrink charts/kubeshrink --set serviceMonitor.enabled=true > /dev/null
 	helm template kubeshrink charts/kubeshrink --set podMonitor.enabled=true > /dev/null
-	helm template kubeshrink charts/kubeshrink | grep -q 'image: "kubeshrink:dev"'
-	helm template kubeshrink charts/kubeshrink --set image.digest=$(CHART_TEST_DIGEST) | grep -q 'image: "kubeshrink@$(CHART_TEST_DIGEST)"'
-	helm template kubeshrink charts/kubeshrink --set image.tag=v1 --set image.digest=$(CHART_TEST_DIGEST) | grep -q 'image: "kubeshrink:v1@$(CHART_TEST_DIGEST)"'
+	helm template kubeshrink charts/kubeshrink | grep -q 'image: "$(RELEASE_IMAGE):$(CHART_APP_VERSION)"'
+	helm template kubeshrink charts/kubeshrink --set image.digest=$(CHART_TEST_DIGEST) | grep -q 'image: "$(RELEASE_IMAGE)@$(CHART_TEST_DIGEST)"'
+	helm template kubeshrink charts/kubeshrink --set image.tag=v1 --set image.digest=$(CHART_TEST_DIGEST) | grep -q 'image: "$(RELEASE_IMAGE):v1@$(CHART_TEST_DIGEST)"'
+	helm template kubeshrink charts/kubeshrink --set image.repository=kubeshrink --set image.tag=dev | grep -q 'image: "kubeshrink:dev"'
 	! helm template kubeshrink charts/kubeshrink --set image.digest=latest > /dev/null 2>&1
+
+.PHONY: release-check
+release-check: ## Fail unless the chart's appVersion is VERSION without its v (the release workflow runs this first)
+	@if [ "$(CHART_APP_VERSION)" != "$(VERSION:v%=%)" ]; then \
+		echo 'charts/kubeshrink/Chart.yaml: appVersion is "$(CHART_APP_VERSION)", but the release is $(VERSION). Set appVersion to "$(VERSION:v%=%)" so the chart installs this release by default.' >&2; \
+		exit 1; \
+	fi
+	@echo 'appVersion $(CHART_APP_VERSION) matches $(VERSION)'
 
 image: ## Build the container image locally; nothing is pushed
 	docker build --build-arg VERSION=$(VERSION) --build-arg COMMIT=$(COMMIT) --build-arg DATE=$(DATE) -t $(IMAGE) .

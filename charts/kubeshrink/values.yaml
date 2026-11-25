@@ -4,13 +4,13 @@
 # ConfigMaps, and it writes nothing.
 
 image:
-  # Defaults to the image `make image` builds locally. Released images are on
-  # ghcr.io/atiasadir/kubeshrink; the README shows how to install one by digest.
-  repository: kubeshrink
-  # Defaults to the chart's appVersion.
+  # The released image. To run a local build (make image), set repository to
+  # kubeshrink and tag to dev.
+  repository: ghcr.io/atiasadir/kubeshrink
+  # Defaults to the chart's appVersion, the release this chart belongs to.
   tag: ""
-  # Pins the image by digest, e.g. sha256:4f6c... The pod then runs exactly
-  # the image you scanned, even if the tag is pushed again later.
+  # Recommended: pin the image by digest, e.g. sha256:4f6c... The pod then
+  # runs exactly the image you verified, even if the tag is pushed again later.
   digest: ""
   pullPolicy: IfNotPresent
 

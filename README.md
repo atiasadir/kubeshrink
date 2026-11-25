@@ -101,13 +101,20 @@ kubectl shrink explain nodes --context my-dev-cluster
 
 ### In a cluster (proof of concept)
 
-`kubeshrink serve` scans the cluster on an interval and exports what it finds as low-cardinality Prometheus metrics. Version tags publish a signed image to GitHub Container Registry ([see below](#from-github-container-registry)); to try unreleased changes, build the image and install the chart on a local cluster. Docker Desktop shares local images with its cluster; with kind, run `kind load docker-image kubeshrink:dev` first.
+`kubeshrink serve` scans the cluster on an interval and exports what it finds as low-cardinality Prometheus metrics. By default the chart installs the released image its `appVersion` names, from GitHub Container Registry. For anything beyond a quick try, verify that image and pin it by digest ([see below](#from-github-container-registry)).
 
 ```sh
-make image    # static binary on Azure Linux distroless; nothing is pushed
 helm install kubeshrink charts/kubeshrink -n kubeshrink --create-namespace
 kubectl -n kubeshrink port-forward svc/kubeshrink 8080 &
 curl -s localhost:8080/metrics | grep '^kubeshrink_'
+```
+
+To try unreleased changes, build the image and point the chart at it. Docker Desktop shares local images with its cluster; with kind, run `kind load docker-image kubeshrink:dev` first.
+
+```sh
+make image    # kubeshrink:dev, a static binary on Azure Linux distroless; nothing is pushed
+helm install kubeshrink charts/kubeshrink -n kubeshrink --create-namespace \
+  --set image.repository=kubeshrink --set image.tag=dev
 ```
 
 - The ClusterRole grants get and list only, never on Secrets or ConfigMaps. The pod runs as a non-root user with a read-only root filesystem and meets the `restricted` Pod Security Standard.
@@ -117,7 +124,7 @@ curl -s localhost:8080/metrics | grep '^kubeshrink_'
 
 ### From GitHub Container Registry
 
-Each version tag (`v*`) publishes a multi-arch image (`linux/amd64` and `linux/arm64`) to `ghcr.io/atiasadir/kubeshrink`, tagged with the version without its `v`. It is signed with cosign keyless signing and carries its CycloneDX SBOM as a signed attestation. Nothing is published before the first tag.
+Each version tag (`v*`) publishes a multi-arch image (`linux/amd64` and `linux/arm64`) to `ghcr.io/atiasadir/kubeshrink`, tagged with the version without its `v`. It is signed with cosign keyless signing and carries its CycloneDX SBOM as a signed attestation.
 
 Verify the image first. The signature and the SBOM attestation must come from this repository's release workflow, run for the version's tag:
 
@@ -131,13 +138,14 @@ cosign verify-attestation --type cyclonedx "$IMAGE" \
   --certificate-identity "$IDENTITY" --certificate-oidc-issuer "$ISSUER" > /dev/null
 ```
 
-`cosign verify` prints the digest it checked (`docker-manifest-digest`). Install that exact image from a clone of this repository, checked out at the version's tag (`git checkout v$VERSION`):
+`cosign verify` prints the digest it checked (`docker-manifest-digest`). Pin every install beyond a quick try to that digest. On `main` the chart's `appVersion` is the latest release, so from a clone of this repository:
 
 ```sh
 helm install kubeshrink charts/kubeshrink -n kubeshrink --create-namespace \
-  --set image.repository=ghcr.io/atiasadir/kubeshrink --set image.tag="$VERSION" \
   --set image.digest=sha256:<digest>
 ```
+
+For another release, also set `image.tag="$VERSION"`, so the version label matches the digest.
 
 ## Limitations
 

@@ -26,4 +26,4 @@ $KIND create cluster --name "$E2E_CLUSTER" --image "$E2E_NODE_IMAGE" --kubeconfi
 trap '$KIND delete cluster --name "$E2E_CLUSTER" --kubeconfig "$kubeconfig"; rm -rf "$workdir"' EXIT
 
 $KIND load docker-image kubeshrink:e2e --name "$E2E_CLUSTER"
-go test -tags e2e -count=1 -v ./test/e2e -args -kubeconfig "$kubeconfig" -context "kind-$E2E_CLUSTER" -image-tag e2e
+go test -tags e2e -count=1 -v ./test/e2e -args -kubeconfig "$kubeconfig" -context "kind-$E2E_CLUSTER" -image-repository kubeshrink -image-tag e2e
