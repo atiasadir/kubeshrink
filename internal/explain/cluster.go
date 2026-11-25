@@ -153,16 +153,34 @@ func (a *Analyzer) Cluster() *ClusterReport {
 	for _, p := range r.Pools {
 		r.NodesNeeded += p.MinNodes
 	}
-	mod, changed, above := atVPATargets(s)
-	r.Size = SizeSummary{VPA: coverage(a.Sizes(), ""), AboveTargets: above, ContainersWithTargets: changed, NodesNeededAtTargets: r.NodesNeeded}
+	r.Size = a.sizeAtVPATargets(r.NodesNeeded)
+	a.addNodeFindings(r)
+	r.Namespaces = a.namespaceLines(pinned)
+	r.NodePools = a.nodePoolSettings()
+	r.Summary = clusterSummary(r)
+	return r
+}
+
+// sizeAtVPATargets compares the requests with the VPA targets: how much is
+// requested above them, and how many nodes the pods would need at them.
+// nodesNeeded is the estimate at the current requests.
+func (a *Analyzer) sizeAtVPATargets(nodesNeeded int) SizeSummary {
+	mod, changed, above := atVPATargets(a.snap)
+	size := SizeSummary{VPA: coverage(a.Sizes(), ""), AboveTargets: above, ContainersWithTargets: changed, NodesNeededAtTargets: nodesNeeded}
 	if changed > 0 {
-		r.Size.NodesNeededAtTargets = 0
+		size.NodesNeededAtTargets = 0
 		for _, p := range capacity.Attribute(mod).Pools() {
-			r.Size.NodesNeededAtTargets += p.MinNodes
+			size.NodesNeededAtTargets += p.MinNodes
 		}
 	}
+	return size
+}
+
+// addNodeFindings counts the node reports by node autoscaler and verdict,
+// collects their data notes, and ranks the rules that block nodes.
+func (a *Analyzer) addNodeFindings(r *ClusterReport) {
 	reasons := map[string]*Reason{}
-	perNode := map[string]int{}
+	perNode := map[string]int{} // per node autoscaler: nodes that carry a per-node note
 	for _, nr := range a.Nodes() {
 		r.ManagedBy[nr.ManagedBy]++
 		r.Verdicts[nr.Verdict]++
@@ -174,31 +192,44 @@ func (a *Analyzer) Cluster() *ClusterReport {
 			addNote(&r.DataNotes, n)
 		}
 		for _, f := range nr.Findings {
-			if f.Severity != Blocker && f.Severity != PossibleBlocker {
-				continue
-			}
-			rs := reasons[f.Rule]
-			if rs == nil {
-				ex := f.Meaning
-				if ex == "" {
-					ex = f.Claim
-				}
-				rs = &Reason{Rule: f.Rule, Layer: f.Layer, Title: ruleTitle(f.Rule), Severity: f.Severity, Example: ex}
-				reasons[f.Rule] = rs
-			}
-			if severityOrder[f.Severity] < severityOrder[rs.Severity] {
-				rs.Severity = f.Severity
-			}
-			if n := len(rs.Nodes); n == 0 || rs.Nodes[n-1] != nr.Node {
-				rs.Nodes = append(rs.Nodes, nr.Node)
+			if f.Severity == Blocker || f.Severity == PossibleBlocker {
+				addReason(reasons, f, nr.Node)
 			}
 		}
 	}
-	for _, rs := range reasons {
-		r.TopReasons = append(r.TopReasons, *rs)
+	r.TopReasons = rankReasons(reasons)
+	addOmittedNotes(r, perNode)
+}
+
+// addReason records that finding f keeps node, under the finding's rule. A
+// rule keeps the most severe severity it was found with.
+func addReason(reasons map[string]*Reason, f Finding, node string) {
+	rs := reasons[f.Rule]
+	if rs == nil {
+		example := f.Meaning
+		if example == "" {
+			example = f.Claim
+		}
+		rs = &Reason{Rule: f.Rule, Layer: f.Layer, Title: ruleTitle(f.Rule), Severity: f.Severity, Example: example}
+		reasons[f.Rule] = rs
 	}
-	sort.Slice(r.TopReasons, func(i, j int) bool {
-		a, b := r.TopReasons[i], r.TopReasons[j]
+	if severityOrder[f.Severity] < severityOrder[rs.Severity] {
+		rs.Severity = f.Severity
+	}
+	if n := len(rs.Nodes); n == 0 || rs.Nodes[n-1] != node {
+		rs.Nodes = append(rs.Nodes, node)
+	}
+}
+
+// rankReasons orders the reasons by how many nodes they keep, then by
+// severity, then by rule ID.
+func rankReasons(reasons map[string]*Reason) []Reason {
+	ranked := []Reason{}
+	for _, rs := range reasons {
+		ranked = append(ranked, *rs)
+	}
+	sort.Slice(ranked, func(i, j int) bool {
+		a, b := ranked[i], ranked[j]
 		if len(a.Nodes) != len(b.Nodes) {
 			return len(a.Nodes) > len(b.Nodes)
 		}
@@ -207,6 +238,12 @@ func (a *Analyzer) Cluster() *ClusterReport {
 		}
 		return a.Rule < b.Rule
 	})
+	return ranked
+}
+
+// addOmittedNotes says, for each node autoscaler, on how many nodes the
+// findings that only apply to another autoscaler were left out.
+func addOmittedNotes(r *ClusterReport, perNode map[string]int) {
 	for _, m := range []string{Karpenter, CA, AutoscalerNone} {
 		if perNode[m] == 0 {
 			continue
@@ -220,6 +257,11 @@ func (a *Analyzer) Cluster() *ClusterReport {
 			addNote(&r.DataNotes, fmt.Sprintf("%d node(s) have no node autoscaler (--node-autoscaler none): autoscaler-specific findings were left out there.", perNode[m]))
 		}
 	}
+}
+
+// namespaceLines lists the namespaces by the idle capacity they hold, with
+// how many of their workloads are pinned at a replica floor.
+func (a *Analyzer) namespaceLines(pinned []Pinned) []NamespaceLine {
 	pinnedIn := map[string]map[string]bool{}
 	for _, p := range pinned {
 		if pinnedIn[p.Namespace] == nil {
@@ -227,11 +269,20 @@ func (a *Analyzer) Cluster() *ClusterReport {
 		}
 		pinnedIn[p.Namespace][p.Workload] = true
 	}
+	lines := []NamespaceLine{}
 	for _, u := range a.att.NamespacesByIdle() {
 		line := NamespaceLine{Namespace: u.Namespace, Pods: u.Pods, Nodes: len(u.Shares), Requested: u.Requested, IdleShare: u.Idle, Pinned: len(pinnedIn[u.Namespace])}
 		line.PackingCPU, line.PackingMemory = u.Packing()
-		r.Namespaces = append(r.Namespaces, line)
+		lines = append(lines, line)
 	}
+	return lines
+}
+
+// nodePoolSettings lists each Karpenter NodePool with its node count and its
+// disruption settings.
+func (a *Analyzer) nodePoolSettings() []NodePoolSettings {
+	s := a.snap
+	var pools []NodePoolSettings
 	for i := range s.NodePools {
 		np := &s.NodePools[i]
 		n := 0
@@ -240,12 +291,16 @@ func (a *Analyzer) Cluster() *ClusterReport {
 				n++
 			}
 		}
-		r.NodePools = append(r.NodePools, NodePoolSettings{Name: np.Metadata.Name, Nodes: n, Settings: poolSettings(np)})
+		pools = append(pools, NodePoolSettings{Name: np.Metadata.Name, Nodes: n, Settings: poolSettings(np)})
 	}
-	r.Summary = fmt.Sprintf("%d node(s) run; by requests alone their pods would fit on %d. Pods request %s of allocatable CPU and %s of memory. Verdicts: %d blocked, %d possibly blocked, %d with no blocker found.",
+	return pools
+}
+
+// clusterSummary is the one-paragraph summary at the top of the report.
+func clusterSummary(r *ClusterReport) string {
+	return fmt.Sprintf("%d node(s) run; by requests alone their pods would fit on %d. Pods request %s of allocatable CPU and %s of memory. Verdicts: %d blocked, %d possibly blocked, %d with no blocker found.",
 		r.Nodes, r.NodesNeeded, pct(r.PackingCPU), pct(r.PackingMemory),
 		r.Verdicts[VerdictBlocked], r.Verdicts[VerdictPossiblyBlocked], r.Verdicts[VerdictNoBlockerFound])
-	return r
 }
 
 // Truncate keeps the first n namespaces; n <= 0 keeps them all.
