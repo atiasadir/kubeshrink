@@ -30,6 +30,9 @@ rules:
   - apiGroups: [autoscaling.k8s.io]
     resources: [verticalpodautoscalers]
     verbs: [get, list]
+  - apiGroups: [karpenter.sh]
+    resources: [nodepools, nodeclaims]
+    verbs: [get, list]
 ---
 # Example binding to a group; replace the subject with your own identity.
 apiVersion: rbac.authorization.k8s.io/v1

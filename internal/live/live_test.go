@@ -24,6 +24,9 @@ func fakeClient(objs ...runtime.Object) *fake.FakeDynamicClient {
 	listKinds := map[schema.GroupVersionResource]string{}
 	for _, r := range Resources {
 		listKinds[r.GVR] = r.Kind + "List"
+		if r.Fallback != nil {
+			listKinds[*r.Fallback] = r.Kind + "List"
+		}
 	}
 	return fake.NewSimpleDynamicClientWithCustomListKinds(runtime.NewScheme(), listKinds, objs...)
 }

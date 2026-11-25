@@ -12,8 +12,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
+	"time"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -31,20 +34,25 @@ type Resource struct {
 	GVR      schema.GroupVersionResource
 	Kind     string
 	Required bool
+	// Fallback is listed instead when GVR is not served, for kinds whose API
+	// version changed (Karpenter's v1beta1 to v1).
+	Fallback *schema.GroupVersionResource
 }
 
 // Resources is the complete set of reads. Keep docs/rbac.yaml in sync.
 var Resources = []Resource{
-	{schema.GroupVersionResource{Version: "v1", Resource: "nodes"}, "Node", true},
-	{schema.GroupVersionResource{Version: "v1", Resource: "pods"}, "Pod", true},
-	{schema.GroupVersionResource{Version: "v1", Resource: "events"}, "Event", false},
-	{schema.GroupVersionResource{Group: "policy", Version: "v1", Resource: "poddisruptionbudgets"}, "PodDisruptionBudget", false},
-	{schema.GroupVersionResource{Group: "autoscaling", Version: "v2", Resource: "horizontalpodautoscalers"}, "HorizontalPodAutoscaler", false},
-	{schema.GroupVersionResource{Group: "apps", Version: "v1", Resource: "deployments"}, "Deployment", false},
-	{schema.GroupVersionResource{Group: "apps", Version: "v1", Resource: "statefulsets"}, "StatefulSet", false},
-	{schema.GroupVersionResource{Group: "apps", Version: "v1", Resource: "replicasets"}, "ReplicaSet", false},
-	{schema.GroupVersionResource{Group: "keda.sh", Version: "v1alpha1", Resource: "scaledobjects"}, "ScaledObject", false},
-	{schema.GroupVersionResource{Group: "autoscaling.k8s.io", Version: "v1", Resource: "verticalpodautoscalers"}, "VerticalPodAutoscaler", false},
+	{schema.GroupVersionResource{Version: "v1", Resource: "nodes"}, "Node", true, nil},
+	{schema.GroupVersionResource{Version: "v1", Resource: "pods"}, "Pod", true, nil},
+	{schema.GroupVersionResource{Version: "v1", Resource: "events"}, "Event", false, nil},
+	{schema.GroupVersionResource{Group: "policy", Version: "v1", Resource: "poddisruptionbudgets"}, "PodDisruptionBudget", false, nil},
+	{schema.GroupVersionResource{Group: "autoscaling", Version: "v2", Resource: "horizontalpodautoscalers"}, "HorizontalPodAutoscaler", false, nil},
+	{schema.GroupVersionResource{Group: "apps", Version: "v1", Resource: "deployments"}, "Deployment", false, nil},
+	{schema.GroupVersionResource{Group: "apps", Version: "v1", Resource: "statefulsets"}, "StatefulSet", false, nil},
+	{schema.GroupVersionResource{Group: "apps", Version: "v1", Resource: "replicasets"}, "ReplicaSet", false, nil},
+	{schema.GroupVersionResource{Group: "keda.sh", Version: "v1alpha1", Resource: "scaledobjects"}, "ScaledObject", false, nil},
+	{schema.GroupVersionResource{Group: "autoscaling.k8s.io", Version: "v1", Resource: "verticalpodautoscalers"}, "VerticalPodAutoscaler", false, nil},
+	{schema.GroupVersionResource{Group: "karpenter.sh", Version: "v1", Resource: "nodepools"}, "NodePool", false, &schema.GroupVersionResource{Group: "karpenter.sh", Version: "v1beta1", Resource: "nodepools"}},
+	{schema.GroupVersionResource{Group: "karpenter.sh", Version: "v1", Resource: "nodeclaims"}, "NodeClaim", false, &schema.GroupVersionResource{Group: "karpenter.sh", Version: "v1beta1", Resource: "nodeclaims"}},
 }
 
 type Options struct {
@@ -65,7 +73,19 @@ func Load(ctx context.Context, opts Options) (*snapshot.Snapshot, error) {
 	if err != nil {
 		return nil, err
 	}
-	return Fetch(ctx, client, opts.SaveDir)
+	s, err := Fetch(ctx, client, opts.SaveDir)
+	if err != nil {
+		return nil, err
+	}
+	if v, err := serverVersion(ctx, cfg); err == nil {
+		s.ServerVersion = v
+	}
+	if opts.SaveDir != "" && s.ServerVersion != "" {
+		if err := writeInfo(opts.SaveDir, s); err != nil {
+			return nil, err
+		}
+	}
+	return s, nil
 }
 
 func RESTConfig(kubeconfig, contextName string) (*rest.Config, error) {
@@ -90,6 +110,8 @@ func RESTConfig(kubeconfig, contextName string) (*rest.Config, error) {
 	}
 	cfg.UserAgent = "kubeshrink (read-only)"
 	cfg.QPS, cfg.Burst = 20, 40
+	// Bound every request, so a slow API server cannot hang a run.
+	cfg.Timeout = 30 * time.Second
 	return cfg, nil
 }
 
@@ -101,8 +123,12 @@ func Fetch(ctx context.Context, client dynamic.Interface, saveDir string) (*snap
 		}
 	}
 	s := snapshot.New()
+	s.TakenAt = time.Now().UTC().Format(time.RFC3339)
 	for _, r := range Resources {
 		items, err := listAll(ctx, client, r.GVR)
+		if err != nil && r.Fallback != nil && apierrors.IsNotFound(err) {
+			items, err = listAll(ctx, client, *r.Fallback)
+		}
 		if err != nil {
 			if !r.Required && (apierrors.IsNotFound(err) || apierrors.IsForbidden(err)) {
 				s.Notes = append(s.Notes, fmt.Sprintf("Could not list %s (%s); rules that use it had no data.", r.GVR.Resource, reason(err)))
@@ -121,7 +147,50 @@ func Fetch(ctx context.Context, client dynamic.Interface, saveDir string) (*snap
 			}
 		}
 	}
+	if saveDir != "" {
+		if err := writeInfo(saveDir, s); err != nil {
+			return nil, err
+		}
+	}
 	return s, s.Validate()
+}
+
+// serverVersion reads GET /version, which is public cluster information. It
+// only labels the report, so callers ignore its errors.
+func serverVersion(ctx context.Context, cfg *rest.Config) (string, error) {
+	hc, err := rest.HTTPClientFor(cfg)
+	if err != nil {
+		return "", err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimSuffix(cfg.Host, "/")+"/version", nil)
+	if err != nil {
+		return "", err
+	}
+	resp, err := hc.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("GET /version: %s", resp.Status)
+	}
+	var v struct {
+		GitVersion string `json:"gitVersion"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&v); err != nil {
+		return "", err
+	}
+	return v.GitVersion, nil
+}
+
+// writeInfo records when the snapshot was taken and from which Kubernetes
+// version, so an offline replay can say so.
+func writeInfo(dir string, s *snapshot.Snapshot) error {
+	data, err := json.MarshalIndent(map[string]string{"kind": snapshot.InfoKind, "takenAt": s.TakenAt, "serverVersion": s.ServerVersion}, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(filepath.Join(dir, snapshot.InfoFile), data, 0o600)
 }
 
 func reason(err error) string {
