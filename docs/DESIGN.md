@@ -131,6 +131,8 @@ Adding a rule means writing one `func(*nodeContext) []Finding` or `func(*nsConte
 
 `no-room-elsewhere` simulates draining one node. Every other node keeps its pods; cordoned nodes take no new pods but still count for affinity and spread. The drained node's pods are placed largest first, each on the first node that passes, in this order: node selector, required node affinity, taints, free CPU, memory and pod slots, host ports, required pod anti-affinity (the pod's own terms and those of pods already there), required pod affinity (a pod that matches its own term may start a group anywhere) and enforced topology spread (skew over the nodes that pass the pod's node selection, with `minDomains`). A placed pod reserves its requests and counts for later pods. A pod that fits nowhere keeps the node; the finding cites each node's first reason and sums them up ("pod anti-affinity on 2 node(s), taint on 1 node(s)"). First-fit can miss a packing that exists, so confidence is medium.
 
+Karpenter's own simulation is stricter in one way that KubeShrink models. For a topology spread on `kubernetes.io/hostname`, Karpenter counts a node it could create as a domain with no matching pods, so it accepts an existing node only while that node's matching pods, plus the pod itself, stay within `maxSkew`. It treats ScheduleAnyway spreads the same way, because it relaxes preferences only when even a new node would not do. When every node the placement check found room on fails that test, `karpenter-needs-new-node` reports that Karpenter needs a new node for the pod, so it can only replace the node, and only with a cheaper one. Each pod is checked on its own against the cluster as it is. KubeShrink does not see instance prices, and does not model Karpenter treating preferred affinity as required or skipping nodes still inside `consolidateAfter` as destinations.
+
 ## 6. The rules, in plain language
 
 Run `kubeshrink rules` (or `rules -o json`) for the authoritative list.
@@ -161,6 +163,7 @@ Run `kubeshrink rules` (or `rules -o json`) for the authoritative list.
 | nodes | `karpenter-consolidation-disabled` | The NodePool sets `consolidateAfter: Never`. | blocker (Karpenter) |
 | nodes | `karpenter-budget` | A disruption budget of 0 nodes, always or in a scheduled window. | blocker or possible blocker (Karpenter) |
 | nodes | `karpenter-not-consolidatable-yet` | The NodeClaim is not consolidatable yet: `consolidateAfter` has not passed since pods last changed. | context (Karpenter) |
+| nodes | `karpenter-needs-new-node` | Karpenter's simulation needs a new node for a pod with a topology spread on `kubernetes.io/hostname`, although the placement check found room for it: Karpenter can only replace the node, and only with a cheaper one. | possible blocker (Karpenter) |
 | nodes | `autoscaler-event` | Quotes what Cluster Autoscaler or Karpenter reported about the node, its NodeClaim or its pods, with a plain-language reading. When the autoscaler says it keeps the node (`Unconsolidatable`, `DisruptionBlocked`, `ScaleDownFailed`), it is a possible blocker. | context or possible blocker |
 
 ### Which autoscaler manages a node

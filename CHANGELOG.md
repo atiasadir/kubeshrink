@@ -7,6 +7,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Added
 
+- `karpenter-needs-new-node` rule: Karpenter's consolidation simulation counts a node it could create as running no pods, so a topology spread on `kubernetes.io/hostname` can leave a pod no existing node even where the scheduler would accept it. Karpenter can then only replace the node, and only with a cheaper one. When this explains a Karpenter event, the note that the placement check disagrees with Karpenter is no longer added.
 - `kubeshrink serve`, an in-cluster mode: it scans on an interval (`--interval`, 5m by default) and serves low-cardinality Prometheus metrics on `/metrics`, plus `/healthz`, `/readyz` (ready after the first successful scan) and JSON scan logs. See `docs/metrics.md`.
 - Helm chart `charts/kubeshrink`: a read-only ClusterRole (get and list, never Secrets or ConfigMaps), a pod that meets the `restricted` Pod Security Standard, and an optional ServiceMonitor or PodMonitor with `honorLabels`, so namespace labels survive scraping.
 - A container image, built locally with `make image` and never pushed: a static binary on Azure Linux 3.0 distroless minimal, built with the Go toolchain image from MCR, both pinned by digest. `make scan` checks it with Trivy and fails on fixable HIGH or CRITICAL findings, `make sbom` writes a CycloneDX SBOM, and `make chart` lints and renders the chart.

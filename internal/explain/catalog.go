@@ -150,6 +150,12 @@ var Catalog = []Rule{
 		Explanation: "Karpenter considers a node for consolidation only after consolidateAfter has passed since pods were last added or removed. Emitted by the NodePool check.",
 	},
 	{
+		ID: "karpenter-needs-new-node", Layer: LayerNodes,
+		Title:       "Karpenter needs a new node for a pod",
+		Explanation: "Karpenter's consolidation simulation counts a node it could create as a hostname domain with no pods, so a topology spread on kubernetes.io/hostname (DoNotSchedule or ScheduleAnyway) rules out every existing node that already runs maxSkew matching pods, even where the scheduler would accept the pod. Such a pod needs a new node, so Karpenter can only replace the node, and only with a cheaper instance type.",
+		nodeCheck:   checkKarpenterNewNode,
+	},
+	{
 		ID: "autoscaler-event", Layer: LayerNodes,
 		Title:       "What the autoscaler itself reported",
 		Explanation: "Events from Cluster Autoscaler or Karpenter (e.g. DisruptionBlocked, Unconsolidatable, ScaleDownFailed) on the node, its NodeClaim or its pods, quoted as evidence.",

@@ -179,6 +179,28 @@ type ruleCase struct {
 // fires and one where it must not; TestEveryRuleHasCases keeps it that way.
 var ruleCases = []ruleCase{
 	{
+		name:    "Karpenter needs a new node for a pod spread by hostname",
+		snap:    func() *snapshot.Snapshot { return hostnameSpreadSnap("DoNotSchedule", true, false) },
+		want:    map[string]Severity{"karpenter-needs-new-node": PossibleBlocker},
+		notWant: []string{"no-room-elsewhere"},
+	},
+	{
+		name:    "Karpenter applies a ScheduleAnyway hostname spread too",
+		snap:    func() *snapshot.Snapshot { return hostnameSpreadSnap("ScheduleAnyway", true, false) },
+		want:    map[string]Severity{"karpenter-needs-new-node": PossibleBlocker},
+		notWant: []string{"no-room-elsewhere"},
+	},
+	{
+		name:    "A node without a matching pod leaves Karpenter room",
+		snap:    func() *snapshot.Snapshot { return hostnameSpreadSnap("DoNotSchedule", true, true) },
+		notWant: []string{"karpenter-needs-new-node", "no-room-elsewhere"},
+	},
+	{
+		name:    "Hostname spread on nodes Karpenter does not manage",
+		snap:    func() *snapshot.Snapshot { return hostnameSpreadSnap("DoNotSchedule", false, false) },
+		notWant: []string{"karpenter-needs-new-node", "no-room-elsewhere"},
+	},
+	{
 		name: "PDB with zero disruptions blocks",
 		snap: func() *snapshot.Snapshot {
 			s := base(pod("ns", "p", "n1", "100m", "128Mi"))
@@ -748,5 +770,47 @@ func TestCatalogIDsAreUnique(t *testing.T) {
 			t.Errorf("duplicate rule ID %s", r.ID)
 		}
 		seen[r.ID] = true
+	}
+}
+
+// hostnameSpreadSnap builds n1 and n2, each running one dns pod spread on the
+// node hostname with maxSkew 1. karpenter puts both nodes in a NodePool;
+// spare adds a node n3 without a dns pod.
+func hostnameSpreadSnap(when string, karpenter, spare bool) *snapshot.Snapshot {
+	spread := func(p *snapshot.Pod) {
+		p.Metadata.Labels = map[string]string{"app": "dns"}
+		p.Spec.TopologySpreadConstraints = []snapshot.TopologySpreadConstraint{{
+			MaxSkew: 1, TopologyKey: labelHostname, WhenUnsatisfiable: when,
+			LabelSelector: &snapshot.LabelSelector{MatchLabels: map[string]string{"app": "dns"}},
+		}}
+	}
+	s := base(pod("ns", "dns-1", "n1", "100m", "70Mi", spread), pod("ns", "dns-2", "n2", "100m", "70Mi", spread))
+	if spare {
+		s.Nodes = append(s.Nodes, node("n3", "4", "16Gi"))
+	}
+	for i := range s.Nodes {
+		n := &s.Nodes[i]
+		n.Metadata.Labels[labelHostname] = n.Metadata.Name
+		if karpenter {
+			n.Metadata.Labels[labelKarpenterNodePool] = "system"
+		}
+	}
+	return s
+}
+
+// TestKarpenterEventNote checks that an autoscaler event explained by
+// karpenter-needs-new-node no longer gets the note that the placement check
+// disagrees with Karpenter.
+func TestKarpenterEventNote(t *testing.T) {
+	event := Finding{Rule: "autoscaler-event", Severity: PossibleBlocker}
+	r := &NodeReport{Findings: []Finding{event}}
+	annotateKarpenterEvents(r, 1)
+	if len(r.Findings[0].Unknowns) != 1 {
+		t.Fatalf("unexplained event: unknowns %v, want the disagreement note", r.Findings[0].Unknowns)
+	}
+	r = &NodeReport{Findings: []Finding{event, {Rule: "karpenter-needs-new-node", Severity: PossibleBlocker}}}
+	annotateKarpenterEvents(r, 1)
+	if len(r.Findings[0].Unknowns) != 0 {
+		t.Errorf("explained event: unknowns %v, want none", r.Findings[0].Unknowns)
 	}
 }
