@@ -4,7 +4,8 @@
 # ConfigMaps, and it writes nothing.
 
 image:
-  # No image is published yet. Build it locally with `make image`.
+  # Defaults to the image `make image` builds locally. Released images are on
+  # ghcr.io/atiasadir/kubeshrink; the README shows how to install one by digest.
   repository: kubeshrink
   # Defaults to the chart's appVersion.
   tag: ""
