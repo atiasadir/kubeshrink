@@ -13,6 +13,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - The placement check covers required node affinity, required pod affinity and anti-affinity, enforced topology spread and host ports; pod requests count init containers, native sidecars and pod overhead.
 - Karpenter NodePools and NodeClaims: rules `karpenter-consolidation-policy`, `karpenter-consolidation-disabled`, `karpenter-budget` and `karpenter-not-consolidatable-yet`; NodeClaim events are quoted with a plain-language reading, and an autoscaler event saying it keeps a node is a possible blocker.
 - `spread-constraint` rule for replicas that must stay apart.
+- A `requests` layer (how big each pod is) from VPA recommendations: rules `requests-above-vpa`, `vpa-not-applied`, `vpa-hpa-conflict` and `vpa-min-allowed`; VPA coverage per team and cluster; and in `explain cluster` an estimate of the nodes needed if requests matched VPA targets. The snapshot reads VPA resource policies, uncapped targets and HPA metrics.
 - Node autoscaler detection (Karpenter label, Cluster Autoscaler pods or events, otherwise unknown) and `--node-autoscaler auto|cluster-autoscaler|none`.
 - Live mode reads Karpenter NodePools and NodeClaims (`karpenter.sh/v1`, falling back to `v1beta1`), records the snapshot time and Kubernetes version in `snapshot-info.json`, and bounds each request at 30 seconds.
 - `kubeshrink rules -o json`.

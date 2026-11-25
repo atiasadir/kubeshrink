@@ -45,6 +45,7 @@ Levels are what a user asks about; layers are where a cause sits. Every report g
 | Layer | Question |
 |---|---|
 | `replicas` | Why do these pods exist? |
+| `requests` | How big is each pod? |
 | `policy` | Where may they run, and may they move? |
 | `nodes` | Will the node autoscaler remove or replace the node? |
 
@@ -56,6 +57,7 @@ All capacity numbers use resource requests, never real usage.
 - **Idle share**: each node's unrequested capacity (allocatable minus all requests) is split between the namespaces with pods on it, in proportion to their requests, separately for CPU and memory. A namespace that requests 0.5 of the 1.6 CPU requested on a 4 CPU node holds 0.5 / 1.6 x 2.4 = 0.75 CPU of idle capacity there. Idle capacity on a node where nothing requests that resource is reported as unattributed.
 - **Team packing** is the namespace's requests divided by requests plus idle share.
 - **Nodes needed** is, per pool, how many of the pool's nodes would hold its pods if they were packed by requests alone (largest pods first, onto the largest nodes, keeping each node's DaemonSet and static pods). Placement rules are ignored, so it is a lower bound, not a plan; the gap between it and the nodes running is what the rules then explain.
+- **Nodes needed at VPA targets** repeats that estimate with every container that has a VPA target requesting the target, and actual requests everywhere else. It never uses the lower bound: memory set below real usage risks OOM kills.
 
 Pools are read from the first of these node labels that is set: `karpenter.sh/nodepool`, `cloud.google.com/gke-nodepool`, `eks.amazonaws.com/nodegroup`, `agentpool`, `kops.k8s.io/instancegroup`.
 
@@ -77,7 +79,8 @@ Pools are read from the first of these node labels that is set: `karpenter.sh/no
 | kube-capacity | Requests, limits and usage per node. | Raw numbers only, no "why". |
 | Kor | Finds unused objects (ConfigMaps, Secrets, PVCs...). | Different question (object waste, not capacity). |
 | OpenCost | Allocates cost, including idle cost, and can share idle cost across namespaces. | Says *how much* is idle and who pays for it, not *why* it stays. KubeShrink's idle share is the same idea in requests, joined with the reasons. |
-| Goldilocks | VPA-based request recommendations. | Right-sizing; complementary. |
+| Goldilocks | VPA-based request recommendations per namespace. | Right-sizing; complementary. KubeShrink reads the same VPA recommendations and joins them with the other reasons capacity stays. |
+| Vertical Pod Autoscaler | Recommends and applies requests. | KubeShrink reports where its recommendations are not applied, and the [known limitation](https://github.com/kubernetes/autoscaler/tree/master/vertical-pod-autoscaler#known-limitations) of combining it with an HPA on CPU or memory. |
 
 **Honest assessment.** "Why can't this node be removed?" on its own is already partly answered by the autoscalers themselves. If KubeShrink stopped there it would be a thin wrapper. The differentiation that holds up:
 
@@ -139,6 +142,10 @@ Run `kubeshrink rules` (or `rules -o json`) for the authoritative list.
 | replicas | `keda-hpa-conflict` | A KEDA ScaledObject and a separate HPA both drive one workload. | warning |
 | replicas | `downscaler-excluded` | The workload opted out of scheduled downscaling. | context |
 | replicas | `downscaler-vs-hpa-floor` | kube-downscaler sets fewer replicas than the HPA allows, so the HPA scales back up. | warning |
+| requests | `requests-above-vpa` | A container requests more than its VPA's upper bound (high confidence) or more than 25% above its target (medium). | warning |
+| requests | `vpa-not-applied` | The VPA's mode is Off (or Initial, with running pods still off target), so its recommendation is known but not used. | warning |
+| requests | `vpa-hpa-conflict` | An HPA scales on CPU or memory utilization while the VPA changes the same requests. | warning |
+| requests | `vpa-min-allowed` | `minAllowed` keeps the recommendation above what usage suggests. | context |
 | policy | `spread-constraint` | Required anti-affinity or an enforced topology spread keeps a team's replicas apart (team view). | context |
 | policy | `no-room-elsewhere` | The placement check finds no other node for a pod. | blocker |
 | policy | `pdb-zero-disruptions` | The pod's disruption budget has no room, so eviction is refused; structural or transient. | blocker |
@@ -169,6 +176,7 @@ Run `kubeshrink rules` (or `rules -o json`) for the authoritative list.
 - Autoscaler settings are read where the cluster exposes them (Karpenter NodePools and NodeClaims), not Cluster Autoscaler flags or node group minimums.
 - One point in time: PDB status, replica counts and events change.
 - Packing is measured with resource requests, not real usage.
+- Pod size is judged only where a VPA recommendation exists; other workloads are unknowns.
 - Read-only: KubeShrink never modifies a cluster.
 
 ## 8. Safety model
@@ -180,14 +188,13 @@ Run `kubeshrink rules` (or `rules -o json`) for the authoritative list.
 
 ## 9. Roadmap
 
-**Proof of concept (this slice):** `explain cluster`, `explain team`, `explain node(s)`; 21 rules in three layers; a placement check with affinity, topology spread and host ports; Karpenter NodePools, NodeClaims and their events; autoscaler detection; offline snapshots and live read-only mode; text and JSON output.
+**Proof of concept (this slice):** `explain cluster`, `explain team`, `explain node(s)`; 25 rules in four layers, including pod size against VPA recommendations and a nodes-needed estimate at VPA targets; a placement check with affinity, topology spread and host ports; Karpenter NodePools, NodeClaims and their events; autoscaler detection; offline snapshots and live read-only mode; text and JSON output.
 
 **Next, in order:**
-1. **Requests layer**: how big each pod is, from the VPA recommendations KubeShrink already reads: requests above the upper bound, recommendations that are not applied, VPA and HPA acting on the same resource, `minAllowed` floors, and a second nodes-needed estimate at VPA targets.
-2. **In-cluster proof of concept**: `kubeshrink serve` with a low-cardinality Prometheus `/metrics` endpoint and JSON logs, and a Helm chart with a read-only ClusterRole. No CRDs: findings are recomputed from the cluster on every scan, so there is no state to store.
-3. `explain workload <name>`: why didn't this workload's replicas drop?
-4. **Time windows**: compare two snapshots (or a metrics source) to explain "replicas fell but node-hours didn't" over a weekend.
-5. Packaging: release binaries and a Krew manifest.
+1. **In-cluster proof of concept**: `kubeshrink serve` with a low-cardinality Prometheus `/metrics` endpoint and JSON logs, and a Helm chart with a read-only ClusterRole. No CRDs: findings are recomputed from the cluster on every scan, so there is no state to store.
+2. `explain workload <name>`: why didn't this workload's replicas drop?
+3. **Time windows**: compare two snapshots (or a metrics source) to explain "replicas fell but node-hours didn't" over a weekend.
+4. Packaging: release binaries and a Krew manifest.
 
 ### How AI fits in (on hold)
 

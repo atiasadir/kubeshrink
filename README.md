@@ -25,6 +25,7 @@ Your pods request a third of what your nodes offer, yet the nodes stay. KubeShri
 | Layer | Question it answers | What KubeShrink checks |
 |---|---|---|
 | replicas | Why do these pods exist? | HPA `minReplicas`, KEDA `minReplicaCount` and paused scaling, a ScaledObject fighting a second HPA, kube-downscaler settings |
+| requests | How big is each pod? | Requests against VPA recommendations: above the upper bound, recommendations not applied, VPA and HPA on the same resource, `minAllowed` floors. Workloads without a recommendation are not judged. |
 | policy | Where may they run, and may they move? | Node selectors, required node and pod (anti-)affinity, taints, topology spread, host ports, PDBs with no room, `do-not-disrupt` and `safe-to-evict` annotations, bare pods, local storage |
 | nodes | Will the node autoscaler remove or replace the node? | Karpenter NodePool `consolidationPolicy`, `consolidateAfter` and disruption budgets, NodeClaim state and events; Cluster Autoscaler annotations and thresholds |
 
@@ -64,7 +65,7 @@ Namespaces by the idle capacity they hold
   checkout    3     3      1.5 CPU, 3.0Gi   3.4 CPU, 21.5Gi  31% / 12%        1
 ```
 
-`explain team checkout` then shows the three findings behind that team's number: its HPA floor of 3, the required anti-affinity that gives each replica its own node, and the placement check that finds no other node for any of them. Add `-o json` for machine-readable output.
+`explain cluster` also estimates how many nodes the pods would fit on if their requests matched the VPA targets, where a target exists. `explain team checkout` then shows the findings behind that team's number: its HPA floor of 3, requests above its VPA's upper bound that the VPA (mode Off) never applies, the required anti-affinity that gives each replica its own node, and the placement check that finds no other node for any of them. Add `-o json` for machine-readable output.
 
 ### Your own data, offline
 
