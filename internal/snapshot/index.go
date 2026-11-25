@@ -10,6 +10,7 @@ const AnnotationMirrorPod = "kubernetes.io/config.mirror"
 
 // Lookups are linear scans: snapshots are small and clarity matters more than speed here.
 
+// Node returns the node with the given name, or nil.
 func (s *Snapshot) Node(name string) *Node {
 	for i := range s.Nodes {
 		if s.Nodes[i].Metadata.Name == name {
@@ -60,6 +61,7 @@ func (s *Snapshot) Namespaces() []string {
 	return out
 }
 
+// IsTerminal reports whether the pod has finished, as Succeeded or Failed.
 func IsTerminal(p *Pod) bool {
 	return p.Status.Phase == "Succeeded" || p.Status.Phase == "Failed"
 }
@@ -83,6 +85,7 @@ func IsMirrorPod(p *Pod) bool {
 // DaemonSet and static pods do, so it never needs room elsewhere.
 func IsNodeBound(p *Pod) bool { return IsDaemonSetPod(p) || IsMirrorPod(p) }
 
+// PDBsFor returns the PodDisruptionBudgets that select the pod.
 func (s *Snapshot) PDBsFor(p *Pod) []*PodDisruptionBudget {
 	var out []*PodDisruptionBudget
 	for i := range s.PDBs {
@@ -94,6 +97,7 @@ func (s *Snapshot) PDBsFor(p *Pod) []*PodDisruptionBudget {
 	return out
 }
 
+// HPAsFor returns the HorizontalPodAutoscalers that target the named workload.
 func (s *Snapshot) HPAsFor(kind, namespace, name string) []*HorizontalPodAutoscaler {
 	var out []*HorizontalPodAutoscaler
 	for i := range s.HPAs {
@@ -106,6 +110,8 @@ func (s *Snapshot) HPAsFor(kind, namespace, name string) []*HorizontalPodAutosca
 	return out
 }
 
+// ScaledObjectsFor returns the KEDA ScaledObjects that target the named
+// workload.
 func (s *Snapshot) ScaledObjectsFor(kind, namespace, name string) []*ScaledObject {
 	var out []*ScaledObject
 	for i := range s.ScaledObjects {
@@ -135,6 +141,8 @@ func (s *Snapshot) VPAsFor(kind, namespace, name string) []*VerticalPodAutoscale
 	return out
 }
 
+// Workload returns the workload with the given kind, namespace and name, or
+// nil.
 func (s *Snapshot) Workload(kind, namespace, name string) *Workload {
 	for i := range s.Workloads {
 		w := &s.Workloads[i]

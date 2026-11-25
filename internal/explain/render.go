@@ -14,6 +14,7 @@ import (
 	"github.com/atiasadir/kubeshrink/internal/capacity"
 )
 
+// WriteJSON writes v to w as indented JSON.
 func WriteJSON(w io.Writer, v any) error {
 	enc := json.NewEncoder(w)
 	enc.SetIndent("", "  ")

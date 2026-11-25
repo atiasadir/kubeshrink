@@ -46,10 +46,12 @@ type Resources struct {
 	Pods        int64 `json:"pods"`
 }
 
+// Add returns the sum of r and o.
 func (r Resources) Add(o Resources) Resources {
 	return Resources{r.MilliCPU + o.MilliCPU, r.MemoryBytes + o.MemoryBytes, r.Pods + o.Pods}
 }
 
+// Sub returns r minus o.
 func (r Resources) Sub(o Resources) Resources {
 	return Resources{r.MilliCPU - o.MilliCPU, r.MemoryBytes - o.MemoryBytes, r.Pods - o.Pods}
 }
@@ -66,6 +68,8 @@ func (r Resources) String() string {
 // unlimitedPods is used when a node does not report allocatable pods.
 const unlimitedPods = 1 << 30
 
+// NodeAllocatable returns the CPU, memory and pod count the node offers to
+// pods.
 func NodeAllocatable(n *Node) Resources {
 	r := ParseResources(n.Status.Allocatable)
 	r.Pods = unlimitedPods
@@ -122,6 +126,7 @@ func whole(v string) int64 {
 	return int64(math.Round(q))
 }
 
+// FormatCPU renders a CPU amount, given in millicores, for reading.
 func FormatCPU(m int64) string {
 	if m < 0 {
 		return "-" + FormatCPU(-m)
@@ -132,6 +137,7 @@ func FormatCPU(m int64) string {
 	return fmt.Sprintf("%dm", m)
 }
 
+// FormatMemory renders a byte count for reading, in binary units.
 func FormatMemory(b int64) string {
 	if b < 0 {
 		return "-" + FormatMemory(-b)

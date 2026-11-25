@@ -52,6 +52,7 @@ const (
 	InfoFile = "snapshot-info.json"
 )
 
+// New returns an empty snapshot to add objects to.
 func New() *Snapshot { return &Snapshot{Skipped: map[string]int{}} }
 
 // Load reads a single file or every .yaml/.yml/.json file under a directory.

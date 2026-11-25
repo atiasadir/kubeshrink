@@ -47,10 +47,12 @@ func amountOf(r snapshot.Resources) Amount {
 	return Amount{float64(r.MilliCPU), float64(r.MemoryBytes)}
 }
 
+// Add returns the sum of a and b.
 func (a Amount) Add(b Amount) Amount {
 	return Amount{a.MilliCPU + b.MilliCPU, a.MemoryBytes + b.MemoryBytes}
 }
 
+// Sub returns a minus b.
 func (a Amount) Sub(b Amount) Amount {
 	return Amount{a.MilliCPU - b.MilliCPU, a.MemoryBytes - b.MemoryBytes}
 }
