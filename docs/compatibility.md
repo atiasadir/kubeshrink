@@ -46,6 +46,8 @@ Offline mode and the unit tests read synthetic snapshots (see `examples/`), so t
 | `linux/arm64` | Built locally and run in the Docker Desktop cluster and in kind (`make e2e`) |
 | `linux/amd64` | Built and scanned in CI, and run in a kind cluster by the CI `e2e` job |
 
+The released image `ghcr.io/atiasadir/kubeshrink:0.1.0` (`sha256:2d1bfe618bedebf93aa2b0fa4ffedd8b140e5688e085a3d8ecaae5a02ae3c4ff`) ran with the chart's default values on a one-node kind 0.33.0 cluster with Kubernetes 1.35.8 on `linux/arm64`: the node pulled it without registry credentials, the pod became Ready after its first scan, and `kubeshrink_build_info` reported `version="v0.1.0"`. Its `linux/amd64` image has only been pulled and run with `docker run` (`kubeshrink version`), not in a cluster.
+
 ## Not tested yet
 
 - Other Kubernetes versions and distributions, including OpenShift.
@@ -53,4 +55,4 @@ Offline mode and the unit tests read synthetic snapshots (see `examples/`), so t
 - More than one replica; the chart runs one.
 - Prometheus without the Operator, such as a plain scrape config.
 - Cluster Autoscaler on a real cluster.
-- A released image from GitHub Container Registry, run in a cluster.
+- The released `linux/amd64` image in a cluster.
