@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # KubeShrink image for the in-cluster proof of concept. Build it locally with
-# `make image` and scan it with `make scan`. No image is published yet.
+# `make image` and scan it with `make scan`. Version tags publish it to GitHub
+# Container Registry through .github/workflows/release.yml.
 #
 # Only go.mod, go.sum, cmd/ and internal/ reach the build (see .dockerignore),
 # so local real-cluster output can never end up in an image.
