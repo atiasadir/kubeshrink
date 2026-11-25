@@ -44,7 +44,7 @@ Offline mode and the unit tests read synthetic snapshots (see `examples/`), so t
 | Platform | Status |
 | --- | --- |
 | `linux/arm64` | Built locally and run in the Docker Desktop cluster and in kind (`make e2e`) |
-| `linux/amd64` | Built and scanned in CI; not yet run in a cluster |
+| `linux/amd64` | Built and scanned in CI, and run in a kind cluster by the CI `e2e` job |
 
 ## Not tested yet
 
