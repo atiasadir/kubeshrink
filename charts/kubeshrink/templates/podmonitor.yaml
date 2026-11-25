@@ -21,6 +21,7 @@ spec:
   podMetricsEndpoints:
     - port: metrics
       path: /metrics
+      honorLabels: {{ .Values.podMonitor.honorLabels }}
       {{- with .Values.podMonitor.interval }}
       interval: {{ . }}
       {{- end }}

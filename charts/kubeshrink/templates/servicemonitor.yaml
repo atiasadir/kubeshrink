@@ -24,6 +24,7 @@ spec:
   endpoints:
     - port: metrics
       path: /metrics
+      honorLabels: {{ .Values.serviceMonitor.honorLabels }}
       {{- with .Values.serviceMonitor.interval }}
       interval: {{ . }}
       {{- end }}

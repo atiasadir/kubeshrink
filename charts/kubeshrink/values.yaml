@@ -48,6 +48,10 @@ service:
 # both. Each needs the monitoring.coreos.com/v1 CRDs.
 serviceMonitor:
   enabled: false
+  # Keep the namespace label KubeShrink sets (the workload's namespace)
+  # instead of letting Prometheus rename it to exported_namespace, as
+  # kube-state-metrics does.
+  honorLabels: true
   # Empty uses Prometheus' default.
   interval: ""
   scrapeTimeout: ""
@@ -56,6 +60,7 @@ serviceMonitor:
 
 podMonitor:
   enabled: false
+  honorLabels: true
   interval: ""
   scrapeTimeout: ""
   labels: {}
