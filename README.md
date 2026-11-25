@@ -27,7 +27,7 @@ Your pods request a third of what your nodes offer, yet the nodes stay. KubeShri
 | replicas | Why do these pods exist? | HPA `minReplicas`, KEDA `minReplicaCount` and paused scaling, a ScaledObject fighting a second HPA, kube-downscaler settings |
 | requests | How big is each pod? | Requests against VPA recommendations: above the upper bound, recommendations not applied, VPA and HPA on the same resource, `minAllowed` floors. Workloads without a recommendation are not judged. |
 | policy | Where may they run, and may they move? | Node selectors, required node and pod (anti-)affinity, taints, topology spread, host ports, PDBs with no room, `do-not-disrupt` and `safe-to-evict` annotations, bare pods, local storage |
-| nodes | Will the node autoscaler remove or replace the node? | Karpenter NodePool `consolidationPolicy`, `consolidateAfter` and disruption budgets, NodeClaim state and events; Cluster Autoscaler annotations and thresholds |
+| nodes | Will the node autoscaler remove or replace the node? | Karpenter NodePool `consolidationPolicy`, `consolidateAfter` and disruption budgets, NodeClaim state and events, pods Karpenter could only move to a new node; Cluster Autoscaler annotations and thresholds |
 
 Packing is measured with resource requests. A namespace's **idle share** is its part of the unrequested capacity on each node it uses, split between the namespaces on that node in proportion to their requests. Its **packing** is its requests divided by requests plus idle share.
 
@@ -116,7 +116,7 @@ curl -s localhost:8080/metrics | grep '^kubeshrink_'
 
 ## Limitations
 
-KubeShrink approximates; it is not a scheduler simulation. The placement check covers node selectors, required node affinity, taints, required pod (anti-)affinity, topology spread and host ports, but not volume zones, priorities or preemption. Cluster Autoscaler flags and node group minimums are not visible to it, packing uses requests rather than real usage, and a snapshot is one moment in time. Each report lists these limitations and each finding lists its unknowns. See [docs/DESIGN.md](docs/DESIGN.md).
+KubeShrink approximates; it is not a scheduler simulation. The placement check covers node selectors, required node affinity, taints, required pod (anti-)affinity, topology spread and host ports, but not volume zones, priorities or preemption. On Karpenter nodes it also applies Karpenter's stricter reading of hostname topology spread, but it cannot see instance prices. Cluster Autoscaler flags and node group minimums are not visible to it, packing uses requests rather than real usage, and a snapshot is one moment in time. Each report lists these limitations and each finding lists its unknowns. See [docs/DESIGN.md](docs/DESIGN.md).
 
 ## Design and roadmap
 

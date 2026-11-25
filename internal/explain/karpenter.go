@@ -171,7 +171,7 @@ func annotateKarpenterEvents(r *NodeReport, movable int) {
 		return
 	}
 	for _, f := range r.Findings {
-		if f.Rule == "no-room-elsewhere" {
+		if f.Rule == "no-room-elsewhere" || f.Rule == "karpenter-needs-new-node" {
 			return
 		}
 	}
