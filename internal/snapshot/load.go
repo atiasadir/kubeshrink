@@ -245,12 +245,21 @@ func (s *Snapshot) Validate() error {
 	}
 	for i := range s.VPAs {
 		v := &s.VPAs[i]
+		ref := Ref("VerticalPodAutoscaler", v.Metadata.Namespace, v.Metadata.Name)
+		if v.Spec.ResourcePolicy != nil {
+			for _, cp := range v.Spec.ResourcePolicy.ContainerPolicies {
+				for _, m := range []map[string]string{cp.MinAllowed, cp.MaxAllowed} {
+					if err := checkQuantities(ref+" resource policy for "+cp.ContainerName, m); err != nil {
+						return err
+					}
+				}
+			}
+		}
 		if v.Status.Recommendation == nil {
 			continue
 		}
-		ref := Ref("VerticalPodAutoscaler", v.Metadata.Namespace, v.Metadata.Name)
 		for _, r := range v.Status.Recommendation.ContainerRecommendations {
-			for _, m := range []map[string]string{r.Target, r.LowerBound, r.UpperBound} {
+			for _, m := range []map[string]string{r.Target, r.LowerBound, r.UpperBound, r.UncappedTarget} {
 				if err := checkQuantities(ref+" recommendation for "+r.ContainerName, m); err != nil {
 					return err
 				}

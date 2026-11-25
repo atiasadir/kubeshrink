@@ -43,6 +43,27 @@ var Catalog = []Rule{
 		Explanation: "kube-downscaler lowers replicas off-hours, but an HPA with a higher minReplicas scales them straight back up. Emitted by the replica-floor check.",
 	},
 	{
+		ID: "requests-above-vpa", Layer: LayerRequests,
+		Title:       "Requests above the VPA recommendation",
+		Explanation: "A container requests more CPU or memory than its VPA's upper bound (high confidence) or more than 25% above its target (medium). Oversized requests make nodes look full on paper.",
+		nodeCheck:   checkRequestsNode, nsCheck: checkRequestsNS,
+	},
+	{
+		ID: "vpa-not-applied", Layer: LayerRequests,
+		Title:       "VPA recommendation not applied",
+		Explanation: "The VPA's update mode is Off, or Initial while running pods still differ from its target by more than 25%, so the recommended size is known but not used. Emitted by the requests check.",
+	},
+	{
+		ID: "vpa-hpa-conflict", Layer: LayerRequests,
+		Title:       "VPA and HPA act on the same resource",
+		Explanation: "An HPA scales on CPU or memory utilization while a VPA in an applying mode changes the same requests. The VPA project lists this as a known limitation (" + vpaLimitationsDoc + "). Emitted by the requests check.",
+	},
+	{
+		ID: "vpa-min-allowed", Layer: LayerRequests,
+		Title:       "VPA minAllowed above what usage suggests",
+		Explanation: "The VPA resourcePolicy minAllowed keeps the recommendation above the uncapped target computed from usage. Emitted by the requests check.",
+	},
+	{
 		ID: "spread-constraint", Layer: LayerPolicy,
 		Title:       "Replicas forced onto separate nodes or zones",
 		Explanation: "Required pod anti-affinity or an enforced topology spread keeps a workload's replicas apart, which limits how tightly they can be packed.",

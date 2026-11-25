@@ -8,6 +8,7 @@
 // Each finding belongs to a layer, the place where its cause sits:
 //
 //   - replicas: why the pods exist (HPA and KEDA minimums, scheduled downscalers)
+//   - requests: how big each pod is (requests against VPA recommendations)
 //   - policy: where pods may run and whether they may move
 //   - nodes: whether the node autoscaler removes or replaces nodes
 package explain
@@ -45,6 +46,7 @@ type Layer string
 
 const (
 	LayerReplicas Layer = "replicas"
+	LayerRequests Layer = "requests"
 	LayerPolicy   Layer = "policy"
 	LayerNodes    Layer = "nodes"
 )
@@ -56,6 +58,7 @@ var Layers = []struct {
 	Question string
 }{
 	{LayerReplicas, "Why do these pods exist?"},
+	{LayerRequests, "How big is each pod?"},
 	{LayerPolicy, "Where may they run, and may they move?"},
 	{LayerNodes, "Will the node autoscaler remove or replace the node?"},
 }
@@ -123,12 +126,13 @@ var Limitations = []string{
 	"Autoscaler settings are read where the cluster exposes them (Karpenter NodePools and NodeClaims), not Cluster Autoscaler flags or node group minimums.",
 	"One point in time: PDB status, replica counts and events change.",
 	"Packing is measured with resource requests, not real usage.",
+	"Pod size is judged only where a VPA recommendation exists; other workloads are unknowns.",
 	"Read-only: KubeShrink never modifies a cluster.",
 }
 
 var (
 	severityOrder = map[Severity]int{Blocker: 0, PossibleBlocker: 1, Warning: 2, Context: 3}
-	layerOrder    = map[Layer]int{LayerReplicas: 0, LayerPolicy: 1, LayerNodes: 2}
+	layerOrder    = map[Layer]int{LayerReplicas: 0, LayerRequests: 1, LayerPolicy: 2, LayerNodes: 3}
 )
 
 // finalize fills in each finding's layer from the catalog, sorts the findings

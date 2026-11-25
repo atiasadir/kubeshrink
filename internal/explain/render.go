@@ -154,6 +154,9 @@ func WriteSummaryTable(w io.Writer, reports []*NodeReport) error {
 func WriteNamespaceText(w io.Writer, r *NamespaceReport) error {
 	b := &strings.Builder{}
 	fmt.Fprintf(b, "Namespace %s\n%s\n", r.Namespace, r.Summary)
+	if r.VPA.Workloads > 0 {
+		fmt.Fprintf(b, "VPA: %d of %d long-running workload(s) have a recommendation; %d request more than it.\n", r.VPA.WithRecommendation, r.VPA.Workloads, r.VPA.Oversized)
+	}
 	if len(r.Nodes) > 0 {
 		b.WriteString("\nNodes it uses (idle share: its part of each node's unrequested capacity, split by requests)\n")
 		tw := table(b)
@@ -217,6 +220,13 @@ func WriteClusterText(w io.Writer, r *ClusterReport) error {
 	}
 	for _, g := range r.ReplicaFloors {
 		fmt.Fprintf(b, "  %d workload(s) %s: %d pod(s) requesting %s\n", g.Workloads, floorPhrase(g), g.Pods, shortAmount(amountOf(g.Requested)))
+	}
+	v := r.Size.VPA
+	b.WriteString("\nHow big pods are: requests against VPA recommendations\n")
+	fmt.Fprintf(b, "  %d of %d long-running workload(s) have a VPA recommendation; the others are unknowns, not judged.\n", v.WithRecommendation, v.Workloads)
+	if r.Size.ContainersWithTargets > 0 {
+		fmt.Fprintf(b, "  %d workload(s) request more than their VPA recommends; running pods request %s above their VPA targets.\n", v.Oversized, shortAmount(r.Size.AboveTargets))
+		fmt.Fprintf(b, "  Estimate: at VPA targets (where one exists, actual requests elsewhere) the pods would fit on %d node(s), against %d at current requests. Lower bounds are never used, because memory below real usage risks OOM kills.\n", r.Size.NodesNeededAtTargets, r.NodesNeeded)
 	}
 	if len(r.Namespaces) > 0 {
 		b.WriteString("\nNamespaces by the idle capacity they hold\n")

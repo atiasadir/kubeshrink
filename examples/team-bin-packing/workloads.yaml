@@ -16,7 +16,7 @@ items:
   - apiVersion: autoscaling/v2
     kind: HorizontalPodAutoscaler
     metadata: {name: api, namespace: checkout}
-    spec: {scaleTargetRef: {kind: Deployment, name: api}, minReplicas: 3, maxReplicas: 10}
+    spec: {scaleTargetRef: {kind: Deployment, name: api}, minReplicas: 3, maxReplicas: 10, metrics: [{type: Resource, resource: {name: cpu, target: {type: Utilization, averageUtilization: 70}}}]}
   - apiVersion: policy/v1
     kind: PodDisruptionBudget
     metadata: {name: api, namespace: checkout}
@@ -43,7 +43,7 @@ items:
       name: keda-hpa-worker
       namespace: reports
       ownerReferences: [{kind: ScaledObject, name: worker, controller: true}]
-    spec: {scaleTargetRef: {kind: Deployment, name: worker}, minReplicas: 2, maxReplicas: 10}
+    spec: {scaleTargetRef: {kind: Deployment, name: worker}, minReplicas: 2, maxReplicas: 10, metrics: [{type: Resource, resource: {name: cpu, target: {type: Utilization, averageUtilization: 70}}}]}
   - apiVersion: apps/v1
     kind: StatefulSet
     metadata: {name: trainer, namespace: ml}

@@ -1,0 +1,48 @@
+# Synthetic VPAs: one recommends smaller requests but only recommends, one
+# resizes pods that an HPA also scales on CPU, and one is held up by
+# minAllowed. Every name here is made up.
+apiVersion: v1
+kind: List
+items:
+  - apiVersion: autoscaling.k8s.io/v1
+    kind: VerticalPodAutoscaler
+    metadata: {name: api, namespace: checkout}
+    spec:
+      targetRef: {apiVersion: apps/v1, kind: Deployment, name: api}
+      updatePolicy: {updateMode: "Off"}
+    status:
+      recommendation:
+        containerRecommendations:
+          - containerName: api
+            target: {cpu: 150m, memory: 512Mi}
+            lowerBound: {cpu: 100m, memory: 384Mi}
+            upperBound: {cpu: 300m, memory: 768Mi}
+  - apiVersion: autoscaling.k8s.io/v1
+    kind: VerticalPodAutoscaler
+    metadata: {name: worker, namespace: reports}
+    spec:
+      targetRef: {apiVersion: apps/v1, kind: Deployment, name: worker}
+      updatePolicy: {updateMode: Auto}
+    status:
+      recommendation:
+        containerRecommendations:
+          - containerName: worker
+            target: {cpu: 900m, memory: 1843Mi}
+            upperBound: {cpu: 1200m, memory: 2560Mi}
+  - apiVersion: autoscaling.k8s.io/v1
+    kind: VerticalPodAutoscaler
+    metadata: {name: trainer, namespace: ml}
+    spec:
+      targetRef: {apiVersion: apps/v1, kind: StatefulSet, name: trainer}
+      updatePolicy: {updateMode: Initial}
+      resourcePolicy:
+        containerPolicies:
+          - containerName: "*"
+            minAllowed: {cpu: "2", memory: 8Gi}
+    status:
+      recommendation:
+        containerRecommendations:
+          - containerName: trainer
+            target: {cpu: "2", memory: 8Gi}
+            uncappedTarget: {cpu: 500m, memory: 3Gi}
+            upperBound: {cpu: "3", memory: 12Gi}

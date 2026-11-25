@@ -31,11 +31,53 @@ type ClusterReport struct {
 	Verdicts      map[string]int       `json:"verdicts"`
 	TopReasons    []Reason             `json:"topReasons"`
 	ReplicaFloors []FloorGroup         `json:"replicaFloors"`
+	Size          SizeSummary          `json:"size"`
 	Namespaces    []NamespaceLine      `json:"namespaces"`
 	// OmittedNamespaces counts namespaces left out by Truncate.
 	OmittedNamespaces int      `json:"omittedNamespaces,omitempty"`
 	DataNotes         []string `json:"dataNotes,omitempty"`
 	Limitations       []string `json:"limitations"`
+}
+
+// SizeSummary compares requests with VPA recommendations across the cluster.
+type SizeSummary struct {
+	VPA VPACoverage `json:"vpaCoverage"`
+	// AboveTargets is how much running pods request above their VPA targets.
+	AboveTargets capacity.Amount `json:"aboveTargets"`
+	// ContainersWithTargets counts running containers that have a VPA target.
+	ContainersWithTargets int `json:"containersWithTargets"`
+	// NodesNeededAtTargets estimates how many nodes the pods would fit on if
+	// every container with a VPA target requested it, keeping actual requests
+	// elsewhere. Request-based like NodesNeeded; lower bounds are never used.
+	NodesNeededAtTargets int `json:"nodesNeededAtTargets"`
+}
+
+// VPACoverage counts long-running workloads by what their VPA can say.
+type VPACoverage struct {
+	Workloads          int `json:"workloads"`
+	WithVPA            int `json:"withVPA"`
+	WithRecommendation int `json:"withRecommendation"`
+	Oversized          int `json:"oversized"`
+}
+
+func coverage(sizes []WorkloadSize, ns string) VPACoverage {
+	var c VPACoverage
+	for _, w := range sizes {
+		if ns != "" && w.Namespace != ns {
+			continue
+		}
+		c.Workloads++
+		if w.HasVPA {
+			c.WithVPA++
+		}
+		if w.HasRecommendation {
+			c.WithRecommendation++
+		}
+		if w.Oversized {
+			c.Oversized++
+		}
+	}
+	return c
 }
 
 // NodePoolSettings is one Karpenter NodePool and its disruption settings.
@@ -110,6 +152,14 @@ func (a *Analyzer) Cluster() *ClusterReport {
 	r.PackingCPU, r.PackingMemory = capacity.Ratio(req, alloc)
 	for _, p := range r.Pools {
 		r.NodesNeeded += p.MinNodes
+	}
+	mod, changed, above := atVPATargets(s)
+	r.Size = SizeSummary{VPA: coverage(a.Sizes(), ""), AboveTargets: above, ContainersWithTargets: changed, NodesNeededAtTargets: r.NodesNeeded}
+	if changed > 0 {
+		r.Size.NodesNeededAtTargets = 0
+		for _, p := range capacity.Attribute(mod).Pools() {
+			r.Size.NodesNeededAtTargets += p.MinNodes
+		}
 	}
 	reasons := map[string]*Reason{}
 	perNode := map[string]int{}
@@ -211,23 +261,8 @@ func (r *ClusterReport) Truncate(n int) {
 // controllers is listed once per controller.
 func (a *Analyzer) Pinned() []Pinned {
 	s := a.snap
-	seen := map[workloadKey]bool{}
-	var ws []workloadRef
-	for i := range s.Pods {
-		p := &s.Pods[i]
-		if snapshot.IsTerminal(p) || snapshot.IsNodeBound(p) {
-			continue
-		}
-		w, ok := workloadOf(s, p)
-		if !ok || seen[w.key] {
-			continue
-		}
-		seen[w.key] = true
-		ws = append(ws, w)
-	}
-	sort.Slice(ws, func(i, j int) bool { return ws[i].key.ref() < ws[j].key.ref() })
 	out := []Pinned{}
-	for _, w := range ws {
+	for _, w := range a.workloads() {
 		n, _ := replicas(s, w)
 		sos, hpas := autoscalersOf(s, w.key)
 		var pins []Pinned
@@ -252,6 +287,28 @@ func (a *Analyzer) Pinned() []Pinned {
 		}
 	}
 	return out
+}
+
+// workloads lists, in name order, the workloads of every pod that is not
+// finished and not bound to its node.
+func (a *Analyzer) workloads() []workloadRef {
+	s := a.snap
+	seen := map[workloadKey]bool{}
+	var ws []workloadRef
+	for i := range s.Pods {
+		p := &s.Pods[i]
+		if snapshot.IsTerminal(p) || snapshot.IsNodeBound(p) {
+			continue
+		}
+		w, ok := workloadOf(s, p)
+		if !ok || seen[w.key] {
+			continue
+		}
+		seen[w.key] = true
+		ws = append(ws, w)
+	}
+	sort.Slice(ws, func(i, j int) bool { return ws[i].key.ref() < ws[j].key.ref() })
+	return ws
 }
 
 func groupFloors(ps []Pinned) []FloorGroup {

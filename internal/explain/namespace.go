@@ -43,9 +43,11 @@ type NamespaceReport struct {
 	Findings      []Finding       `json:"findings"`
 	// OtherTenantFindings counts findings on the same nodes that are about
 	// other namespaces' pods.
-	OtherTenantFindings int      `json:"otherTenantFindings"`
-	DataNotes           []string `json:"dataNotes,omitempty"`
-	Limitations         []string `json:"limitations"`
+	OtherTenantFindings int `json:"otherTenantFindings"`
+	// VPA counts the namespace's long-running workloads by what their VPA says.
+	VPA         VPACoverage `json:"vpaCoverage"`
+	DataNotes   []string    `json:"dataNotes,omitempty"`
+	Limitations []string    `json:"limitations"`
 }
 
 // Counts returns the number of findings per severity.
@@ -95,8 +97,8 @@ func (a *Analyzer) Namespace(ns string) (*NamespaceReport, error) {
 			}
 			r.Nodes = append(r.Nodes, line)
 			for _, f := range nr.Findings {
-				if f.Layer == LayerReplicas {
-					continue // the namespace's own replica floors come from the namespace check
+				if f.Layer == LayerReplicas || f.Layer == LayerRequests {
+					continue // the namespace checks cover its own workloads
 				}
 				if owner, namespaced := subjectNamespace(f.Subject); namespaced && owner != ns {
 					r.OtherTenantFindings++
@@ -109,6 +111,7 @@ func (a *Analyzer) Namespace(ns string) (*NamespaceReport, error) {
 			}
 		}
 	}
+	r.VPA = coverage(a.Sizes(), ns)
 	r.Findings = finalize(dedupe(fs), true)
 	if r.Findings == nil {
 		r.Findings = []Finding{}

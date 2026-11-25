@@ -260,6 +260,7 @@ type HPASpec struct {
 	ScaleTargetRef CrossVersionObjectReference `json:"scaleTargetRef"`
 	MinReplicas    *int32                      `json:"minReplicas,omitempty"`
 	MaxReplicas    int32                       `json:"maxReplicas"`
+	Metrics        []HPAMetric                 `json:"metrics,omitempty"`
 }
 
 type HPAStatus struct {
@@ -290,8 +291,9 @@ type VerticalPodAutoscaler struct {
 }
 
 type VPASpec struct {
-	TargetRef    CrossVersionObjectReference `json:"targetRef"`
-	UpdatePolicy *VPAUpdatePolicy            `json:"updatePolicy,omitempty"`
+	TargetRef      CrossVersionObjectReference `json:"targetRef"`
+	UpdatePolicy   *VPAUpdatePolicy            `json:"updatePolicy,omitempty"`
+	ResourcePolicy *VPAResourcePolicy          `json:"resourcePolicy,omitempty"`
 }
 
 type VPAUpdatePolicy struct {
@@ -311,6 +313,8 @@ type ContainerRecommendation struct {
 	Target        map[string]string `json:"target,omitempty"`
 	LowerBound    map[string]string `json:"lowerBound,omitempty"`
 	UpperBound    map[string]string `json:"upperBound,omitempty"`
+	// UncappedTarget is the recommendation before minAllowed and maxAllowed apply.
+	UncappedTarget map[string]string `json:"uncappedTarget,omitempty"`
 }
 
 // Workload covers Deployments, StatefulSets and ReplicaSets.
@@ -436,4 +440,35 @@ type ObjectReference struct {
 
 type EventSource struct {
 	Component string `json:"component,omitempty"`
+}
+
+// VPAResourcePolicy limits what a VPA recommends, per container.
+type VPAResourcePolicy struct {
+	ContainerPolicies []VPAContainerPolicy `json:"containerPolicies,omitempty"`
+}
+
+// VPAContainerPolicy applies to one container, or to all with name "*".
+type VPAContainerPolicy struct {
+	ContainerName       string            `json:"containerName"`
+	Mode                string            `json:"mode,omitempty"`
+	MinAllowed          map[string]string `json:"minAllowed,omitempty"`
+	MaxAllowed          map[string]string `json:"maxAllowed,omitempty"`
+	ControlledResources []string          `json:"controlledResources,omitempty"`
+}
+
+// HPAMetric is one autoscaling/v2 metric. Only the resource kinds matter to
+// KubeShrink: they scale on usage divided by requests.
+type HPAMetric struct {
+	Type              string                      `json:"type"`
+	Resource          *HPAResourceSource          `json:"resource,omitempty"`
+	ContainerResource *HPAContainerResourceSource `json:"containerResource,omitempty"`
+}
+
+type HPAResourceSource struct {
+	Name string `json:"name"`
+}
+
+type HPAContainerResourceSource struct {
+	Name      string `json:"name"`
+	Container string `json:"container"`
 }
