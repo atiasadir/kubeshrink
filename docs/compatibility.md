@@ -53,4 +53,4 @@ Offline mode and the unit tests read synthetic snapshots (see `examples/`), so t
 - More than one replica; the chart runs one.
 - Prometheus without the Operator, such as a plain scrape config.
 - Cluster Autoscaler on a real cluster.
-- A published image: nothing is pushed to a registry yet.
+- A released image from GitHub Container Registry, run in a cluster.

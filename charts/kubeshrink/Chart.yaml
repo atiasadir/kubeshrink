@@ -3,8 +3,9 @@ apiVersion: v2
 name: kubeshrink
 description: Runs KubeShrink read-only inside a cluster. It explains why capacity does not shrink and exports what it finds as low-cardinality Prometheus metrics.
 type: application
-# A proof of concept: nothing is published yet. appVersion matches the
-# locally built image tag (make image).
+# A proof of concept. appVersion matches the locally built image tag
+# (make image); released images are on ghcr.io/atiasadir/kubeshrink, and the
+# README shows how to install one by digest.
 version: 0.1.0
 appVersion: "dev"
 # The oldest Kubernetes that serves autoscaling/v2 and policy/v1. The

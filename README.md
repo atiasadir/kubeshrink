@@ -131,11 +131,12 @@ cosign verify-attestation --type cyclonedx "$IMAGE" \
   --certificate-identity "$IDENTITY" --certificate-oidc-issuer "$ISSUER" > /dev/null
 ```
 
-`cosign verify` prints the digest it checked (`docker-manifest-digest`). Install that exact image from a clone of this repository:
+`cosign verify` prints the digest it checked (`docker-manifest-digest`). Install that exact image from a clone of this repository, checked out at the version's tag (`git checkout v$VERSION`):
 
 ```sh
 helm install kubeshrink charts/kubeshrink -n kubeshrink --create-namespace \
-  --set image.repository=ghcr.io/atiasadir/kubeshrink --set image.tag="$VERSION@sha256:<digest>"
+  --set image.repository=ghcr.io/atiasadir/kubeshrink --set image.tag="$VERSION" \
+  --set image.digest=sha256:<digest>
 ```
 
 ## Limitations

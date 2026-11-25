@@ -5,13 +5,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-11-25
+
 ### Added
 
 - `control-plane-node` rule: a node labelled `node-role.kubernetes.io/control-plane` (or the older `node-role.kubernetes.io/master`) is reported as managed by `none` with this blocker, and is left out of `explain cluster` (nodes, pools, nodes needed, packing, verdicts, top reasons and namespaces) and of `kubeshrink_nodes`, `kubeshrink_nodes_needed` and `kubeshrink_blocked_nodes`, because no node autoscaler removes it. Clusters whose nodes are all control-plane nodes, such as single-node kind or Docker Desktop clusters, are unchanged.
 - `karpenter-needs-new-node` rule: Karpenter's consolidation simulation counts a node it could create as running no pods, so a topology spread on `kubernetes.io/hostname` can leave a pod no existing node even where the scheduler would accept it. Karpenter can then only replace the node, and only with a cheaper one. When this explains a Karpenter event, the note that the placement check disagrees with Karpenter is no longer added.
 - `kubeshrink serve`, an in-cluster mode: it scans on an interval (`--interval`, 5m by default) and serves low-cardinality Prometheus metrics on `/metrics`, plus `/healthz`, `/readyz` (ready after the first successful scan) and JSON scan logs. See `docs/metrics.md`.
 - Helm chart `charts/kubeshrink`: a read-only ClusterRole (get and list, never Secrets or ConfigMaps), a pod that meets the `restricted` Pod Security Standard, and an optional ServiceMonitor or PodMonitor with `honorLabels`, so namespace labels survive scraping.
-- A container image, built locally with `make image` and never pushed: a static binary on Azure Linux 3.0 distroless minimal, built with the Go toolchain image from MCR, both pinned by digest. `make scan` checks it with Trivy and fails on fixable HIGH or CRITICAL findings, `make sbom` writes a CycloneDX SBOM, and `make chart` lints and renders the chart.
+- A container image, built locally with `make image`: a static binary on Azure Linux 3.0 distroless minimal, built with the Go toolchain image from MCR, both pinned by digest. `make scan` checks it with Trivy and fails on fixable HIGH or CRITICAL findings, `make sbom` writes a CycloneDX SBOM, and `make chart` lints and renders the chart.
 - Chart value `image.digest` pins the image by digest (`repository[:tag]@sha256:...`), so an install runs exactly the image that was scanned; a malformed digest fails the render, and `make chart` checks each form of the image reference.
 - CI builds and scans the image, keeps its SBOM, pins every action to a commit SHA and also runs weekly; Dependabot proposes Go module, action and base image updates. `SECURITY.md` describes how vulnerabilities are handled.
 - Release workflow `.github/workflows/release.yml`, run only for version tags (`v*`): the same scan gate as CI, then `linux/amd64` and `linux/arm64` images pushed to `ghcr.io/atiasadir/kubeshrink` with the workflow's `GITHUB_TOKEN`, signed by digest with cosign keyless signing and given their CycloneDX SBOM as a signed attestation. The README shows how to verify and install them.
@@ -36,3 +38,6 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - A cluster with no other schedulable node gets one node-level `no-room-elsewhere` finding instead of one per pod.
 - Text and JSON output; `kubeshrink rules`; version info via ldflags; `kubectl shrink` plugin naming.
 - Synthetic `examples/weekend-scale-down` scenario, `examples/local-demo` workloads for a throwaway local cluster, design document and read-only RBAC example.
+
+[Unreleased]: https://github.com/atiasadir/kubeshrink/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/atiasadir/kubeshrink/releases/tag/v0.1.0
