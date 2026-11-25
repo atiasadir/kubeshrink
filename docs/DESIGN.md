@@ -185,16 +185,19 @@ Run `kubeshrink rules` (or `rules -o json`) for the authoritative list.
 - It issues `list` calls only, on a fixed set of resources (`internal/live/live.go`), never Secrets or ConfigMaps. A unit test asserts this.
 - For enforcement by the API server rather than by our code, bind a dedicated identity to [`docs/rbac.yaml`](rbac.yaml) (get/list only).
 - Exports (`kubeshrink snapshot --out`) are written with owner-only permissions. Keep them in `.kubeshrink/`, which is git-ignored; real cluster data never belongs in the repository.
+- In a cluster, the chart's ClusterRole grants get and list on the same fixed set of resources; a unit test keeps the chart, `docs/rbac.yaml` and the code in step. The pod runs as a non-root user with a read-only root filesystem, no privilege escalation, no capabilities and the `RuntimeDefault` seccomp profile, which meets the `restricted` Pod Security Standard.
+- The image is a static binary on Azure Linux distroless minimal: no shell and no package manager. CI scans it with Trivy and keeps an SBOM, and Dependabot proposes base image, Go module and action updates. See [SECURITY.md](../SECURITY.md).
 
 ## 9. Roadmap
 
 **Proof of concept (this slice):** `explain cluster`, `explain team`, `explain node(s)`; 25 rules in four layers, including pod size against VPA recommendations and a nodes-needed estimate at VPA targets; a placement check with affinity, topology spread and host ports; Karpenter NodePools, NodeClaims and their events; autoscaler detection; offline snapshots and live read-only mode; text and JSON output.
 
+**In-cluster proof of concept (done; tested on a local cluster only):** `kubeshrink serve` scans on an interval and serves low-cardinality Prometheus metrics ([metrics.md](metrics.md)), `/healthz`, `/readyz` and JSON logs; a Helm chart installs it with a read-only ClusterRole and an optional ServiceMonitor or PodMonitor. No CRDs: findings are recomputed from the cluster on every scan, so there is no state to store. Each scan lists everything again instead of watching, which keeps the permissions to get and list. What was tested is in [compatibility.md](compatibility.md).
+
 **Next, in order:**
-1. **In-cluster proof of concept**: `kubeshrink serve` with a low-cardinality Prometheus `/metrics` endpoint and JSON logs, and a Helm chart with a read-only ClusterRole. No CRDs: findings are recomputed from the cluster on every scan, so there is no state to store.
-2. `explain workload <name>`: why didn't this workload's replicas drop?
-3. **Time windows**: compare two snapshots (or a metrics source) to explain "replicas fell but node-hours didn't" over a weekend.
-4. Packaging: release binaries and a Krew manifest.
+1. `explain workload <name>`: why didn't this workload's replicas drop?
+2. **Time windows**: compare two snapshots (or a metrics source) to explain "replicas fell but node-hours didn't" over a weekend.
+3. Packaging: release binaries, a published image and a Krew manifest.
 
 ### How AI fits in (on hold)
 
@@ -215,3 +218,5 @@ Principles: pluggable model (hosted or local); no cluster data leaves the machin
 - When neither autoscaler is visible, findings for both are kept (managed Cluster Autoscaler runs outside the cluster); `--node-autoscaler none` drops them. Revisit if this proves noisy.
 - Nodes needed ignores placement rules, so it is a lower bound. A placement-aware estimate would need a full packing simulation.
 - Idle share is split by requests. Splitting by real usage needs a metrics source.
+- Whether and where to publish an image. The image uses Go's own crypto (the toolchain's system crypto is switched off). A FIPS build would need OpenSSL in the image (Azure Linux distroless `base` instead of `minimal`) and cgo, or the toolchain's cgo-less OpenSSL mode.
+- Every KubeShrink instance reports the whole cluster, so the example queries collapse duplicates with `max`. A highly available setup would rely on that, or need leader election.

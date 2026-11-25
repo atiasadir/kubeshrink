@@ -99,6 +99,21 @@ make plugin && cp bin/kubectl-shrink /usr/local/bin/
 kubectl shrink explain nodes --context my-dev-cluster
 ```
 
+### In a cluster (proof of concept)
+
+`kubeshrink serve` scans the cluster on an interval and exports what it finds as low-cardinality Prometheus metrics. No image is published yet, so build one and install the chart on a local cluster. Docker Desktop shares local images with its cluster; with kind, run `kind load docker-image kubeshrink:dev` first.
+
+```sh
+make image    # static binary on Azure Linux distroless; nothing is pushed
+helm install kubeshrink charts/kubeshrink -n kubeshrink --create-namespace
+kubectl -n kubeshrink port-forward svc/kubeshrink 8080 &
+curl -s localhost:8080/metrics | grep '^kubeshrink_'
+```
+
+- The ClusterRole grants get and list only, never on Secrets or ConfigMaps. The pod runs as a non-root user with a read-only root filesystem and meets the `restricted` Pod Security Standard.
+- With the Prometheus Operator, add `--set serviceMonitor.enabled=true` (or `podMonitor.enabled=true`). Metrics, example queries and alerts are in [docs/metrics.md](docs/metrics.md); what has been tested is in [docs/compatibility.md](docs/compatibility.md).
+- `make scan` checks the image with Trivy. `helm uninstall kubeshrink -n kubeshrink` removes everything the chart created; the namespace stays until you delete it.
+
 ## Limitations
 
 KubeShrink approximates; it is not a scheduler simulation. The placement check covers node selectors, required node affinity, taints, required pod (anti-)affinity, topology spread and host ports, but not volume zones, priorities or preemption. Cluster Autoscaler flags and node group minimums are not visible to it, packing uses requests rather than real usage, and a snapshot is one moment in time. Each report lists these limitations and each finding lists its unknowns. See [docs/DESIGN.md](docs/DESIGN.md).
