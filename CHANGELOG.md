@@ -7,6 +7,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Added
 
+- README and design doc state that this version uses rules only and that AI is the next layer of the loop.
 - Project logo (`docs/images/kubeshrink-logo.png`) shown in the README, and a square icon (`docs/images/kubeshrink-icon.png`) for avatars and favicons.
 - `kubeshrink explain node <name>` and `explain nodes` over offline snapshots (multi-document YAML, kubectl `List`s, JSON).
 - Live read-only mode (`--context`, list calls only, never Secrets or ConfigMaps) and `kubeshrink snapshot --out` for offline replay.

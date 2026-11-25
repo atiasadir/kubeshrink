@@ -9,6 +9,8 @@
 You scaled replicas down for the weekend, but node-hours stayed flat. KubeShrink reads your Kubernetes objects, read-only, and explains which pods keep which nodes alive, and which autoscaler settings keep those pods around. Every finding cites its evidence, states competing explanations and lists what it could not see.
 
 > Status: early prototype (v0.1, unreleased). Expect breaking changes.
+>
+> **AI is part of the loop; this release is the rules engine it builds on.** The current version uses deterministic rules only: no model calls, and no data leaves your machine. The AI layer comes next: it will explain findings, decide what to check next and weigh competing causes, always grounded in facts the rules have verified. See [How AI fits in](docs/DESIGN.md#how-ai-fits-in-the-next-layer).
 
 ## What it looks at
 
@@ -89,7 +91,7 @@ KubeShrink approximates; it is not a scheduler simulation. Affinity, topology sp
 
 ## Design and roadmap
 
-[docs/DESIGN.md](docs/DESIGN.md) covers the problem, prior art (and where KubeShrink genuinely differs), the evidence model, the code flow, every rule, and the roadmap, including optional AI features that only ever narrate verified findings.
+[docs/DESIGN.md](docs/DESIGN.md) covers the problem, prior art (and where KubeShrink genuinely differs), the evidence model, the code flow, every rule, and the roadmap, including the AI layer, which only ever works from verified findings.
 
 ## Contributing
 

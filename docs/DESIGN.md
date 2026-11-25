@@ -1,6 +1,6 @@
 # KubeShrink design
 
-Status: early prototype (v0.1, unreleased). This document explains what KubeShrink is for, how the code is organized, what each rule does, and where it is going.
+Status: early prototype (v0.1, unreleased). **The current version uses deterministic rules only; it contains no AI yet.** AI is a core part of the planned loop and the next layer to build (section 9). This document explains what KubeShrink is for, how the code is organized, what each rule does, and where it is going.
 
 ## 1. The problem
 
@@ -137,9 +137,9 @@ Run `kubeshrink rules` for the authoritative list. Today:
 - **Time windows**: compare two snapshots (or a metrics source) to explain "replicas fell but node-hours didn't" over a weekend.
 - Packaging: release binaries, Krew manifest; a Helm chart or in-cluster mode only if there is demand.
 
-### How AI fits in (optional, later)
+### How AI fits in (the next layer)
 
-The deterministic rules produce the facts; AI never invents them. The tool must work fully with AI turned off.
+Today KubeShrink has no AI: every finding comes from a deterministic rule. AI is part of the intended loop and the next layer to build, on top of the rules: rules gather and verify facts, AI interprets them and decides what to check next, and rules confirm or rule out what AI proposes. AI never invents facts. The tool must work fully with AI turned off.
 
 1. **Explain**: turn findings into a plain-language narrative in which every sentence links to finding or evidence IDs; a checker rejects any sentence without evidence.
 2. **Investigate**: an agent loop that decides what to check next (other time windows, related objects), using only KubeShrink's read-only queries as its tools.
