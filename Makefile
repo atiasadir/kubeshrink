@@ -54,5 +54,15 @@ sbom: ## Write a CycloneDX SBOM of the local image to dist/kubeshrink.cdx.json
 	mkdir -p dist
 	$(TRIVY_RUN) -v $(CURDIR)/dist:/out $(TRIVY_IMAGE) image --no-progress --quiet --format cyclonedx --output /out/kubeshrink.cdx.json $(IMAGE)
 
+# End-to-end tests run on a throwaway kind cluster that exists only for the run.
+KIND           ?= go run sigs.k8s.io/kind@v0.33.0
+E2E_CLUSTER    ?= kubeshrink-e2e
+E2E_NODE_IMAGE ?= kindest/node:v1.35.8@sha256:07b2536e30b803ed61d1677a79df6115f798ce64c80f9e22f6ed45afd09323c0
+
+.PHONY: e2e
+e2e: ## Test the CLI and the chart on a throwaway kind cluster (needs Docker, kubectl and helm)
+	$(MAKE) image IMAGE=kubeshrink:e2e
+	KIND="$(KIND)" E2E_CLUSTER=$(E2E_CLUSTER) E2E_NODE_IMAGE=$(E2E_NODE_IMAGE) test/e2e/run.sh
+
 clean:
 	rm -rf bin dist
