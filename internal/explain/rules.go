@@ -60,6 +60,9 @@ func with(base []Evidence, extra ...Evidence) []Evidence {
 
 func safeToEvict(p *snapshot.Pod) bool { return p.Metadata.Annotations[annCASafeToEvict] == "true" }
 
+// checkKarpenterDoNotDisrupt reports a karpenter.sh/do-not-disrupt annotation
+// on the node or on one of its movable pods. Karpenter does not voluntarily
+// disrupt such a node, so it cannot consolidate it.
 func checkKarpenterDoNotDisrupt(c *nodeContext) []Finding {
 	var out []Finding
 	notKarpenter := []string{"If this node is not managed by Karpenter, the annotation has no effect."}
@@ -89,6 +92,9 @@ func checkKarpenterDoNotDisrupt(c *nodeContext) []Finding {
 	return out
 }
 
+// checkCAScaleDownDisabled reports a node annotated cluster-
+// autoscaler.kubernetes.io/scale-down-disabled=true, which Cluster Autoscaler
+// never removes.
 func checkCAScaleDownDisabled(c *nodeContext) []Finding {
 	if c.node.Metadata.Annotations[annCAScaleDownDisabled] != "true" {
 		return nil
@@ -103,6 +109,8 @@ func checkCAScaleDownDisabled(c *nodeContext) []Finding {
 	}}
 }
 
+// checkSafeToEvictFalse reports movable pods annotated safe-to-evict=false.
+// Cluster Autoscaler keeps any node that runs one.
 func checkSafeToEvictFalse(c *nodeContext) []Finding {
 	var out []Finding
 	for _, p := range c.movable {
@@ -120,6 +128,9 @@ func checkSafeToEvictFalse(c *nodeContext) []Finding {
 	return out
 }
 
+// checkPDBs reports movable pods that their PodDisruptionBudgets will not let
+// go: a budget with no disruptions allowed, or more than one budget for the
+// same pod, which the eviction API refuses.
 func checkPDBs(c *nodeContext) []Finding {
 	var out []Finding
 	for _, p := range c.movable {
@@ -191,6 +202,9 @@ func pdbRef(b *snapshot.PodDisruptionBudget) string {
 	return snapshot.Ref("PodDisruptionBudget", b.Metadata.Namespace, b.Metadata.Name)
 }
 
+// checkNoController reports movable pods without a controlling owner. Nothing
+// would recreate them elsewhere, so Cluster Autoscaler keeps their node unless
+// they are marked safe to evict.
 func checkNoController(c *nodeContext) []Finding {
 	var out []Finding
 	for _, p := range c.movable {
@@ -209,6 +223,9 @@ func checkNoController(c *nodeContext) []Finding {
 	return out
 }
 
+// checkLocalStorage reports movable pods with emptyDir or hostPath volumes
+// that are not listed in safe-to-evict-local-volumes. Cluster Autoscaler may
+// refuse to move them, depending on --skip-nodes-with-local-storage.
 func checkLocalStorage(c *nodeContext) []Finding {
 	var out []Finding
 	for _, p := range c.movable {
@@ -248,6 +265,9 @@ func checkLocalStorage(c *nodeContext) []Finding {
 	return out
 }
 
+// checkKubeSystem reports kube-system pods without a PodDisruptionBudget.
+// Cluster Autoscaler does not move them when --skip-nodes-with-system-pods is
+// on.
 func checkKubeSystem(c *nodeContext) []Finding {
 	var out []Finding
 	for _, p := range c.movable {
@@ -266,6 +286,9 @@ func checkKubeSystem(c *nodeContext) []Finding {
 	return out
 }
 
+// checkUtilization reports a node whose pods request more of its CPU or memory
+// than Cluster Autoscaler's default scale-down utilization threshold, so it is
+// not a scale-down candidate.
 func checkUtilization(c *nodeContext) []Finding {
 	alloc := snapshot.NodeAllocatable(c.node)
 	if alloc.MilliCPU == 0 || alloc.MemoryBytes == 0 {
