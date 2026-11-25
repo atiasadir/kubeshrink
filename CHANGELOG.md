@@ -7,10 +7,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Added
 
-- Chart value `image.digest` pins the image by digest (`repository[:tag]@sha256:...`), so an install runs exactly the image that was scanned; a malformed digest fails the render, and `make chart` checks each form of the image reference.
 - `kubeshrink serve`, an in-cluster mode: it scans on an interval (`--interval`, 5m by default) and serves low-cardinality Prometheus metrics on `/metrics`, plus `/healthz`, `/readyz` (ready after the first successful scan) and JSON scan logs. See `docs/metrics.md`.
 - Helm chart `charts/kubeshrink`: a read-only ClusterRole (get and list, never Secrets or ConfigMaps), a pod that meets the `restricted` Pod Security Standard, and an optional ServiceMonitor or PodMonitor with `honorLabels`, so namespace labels survive scraping.
 - A container image, built locally with `make image` and never pushed: a static binary on Azure Linux 3.0 distroless minimal, built with the Go toolchain image from MCR, both pinned by digest. `make scan` checks it with Trivy and fails on fixable HIGH or CRITICAL findings, `make sbom` writes a CycloneDX SBOM, and `make chart` lints and renders the chart.
+- Chart value `image.digest` pins the image by digest (`repository[:tag]@sha256:...`), so an install runs exactly the image that was scanned; a malformed digest fails the render, and `make chart` checks each form of the image reference.
 - CI builds and scans the image, keeps its SBOM, pins every action to a commit SHA and also runs weekly; Dependabot proposes Go module, action and base image updates. `SECURITY.md` describes how vulnerabilities are handled.
 - `docs/metrics.md` (metrics, scraping, example queries and alerts) and `docs/compatibility.md` (what has actually been tested).
 - `kubeshrink explain cluster`: the nodes that run against the nodes the requests would fit on (per pool, a request-based lower bound), request-based packing, the rules that keep nodes, workloads held at a replica floor, and namespaces ranked by the idle capacity they hold (`--top`).
