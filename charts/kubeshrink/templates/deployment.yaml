@@ -44,7 +44,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: kubeshrink
-          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          image: {{ include "kubeshrink.image" . | quote }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           args:
             - serve

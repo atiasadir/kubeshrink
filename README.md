@@ -112,6 +112,7 @@ curl -s localhost:8080/metrics | grep '^kubeshrink_'
 
 - The ClusterRole grants get and list only, never on Secrets or ConfigMaps. The pod runs as a non-root user with a read-only root filesystem and meets the `restricted` Pod Security Standard.
 - With the Prometheus Operator, add `--set serviceMonitor.enabled=true` (or `podMonitor.enabled=true`). Metrics, example queries and alerts are in [docs/metrics.md](docs/metrics.md); what has been tested is in [docs/compatibility.md](docs/compatibility.md).
+- To run an image you pushed to your own registry, pin it by digest: `--set image.repository=<registry>/kubeshrink --set image.tag=<tag> --set image.digest=sha256:<digest>`. The pod then runs exactly the image you scanned, even if the tag is pushed again.
 - `make scan` checks the image with Trivy. `helm uninstall kubeshrink -n kubeshrink` removes everything the chart created; the namespace stays until you delete it.
 
 ## Limitations

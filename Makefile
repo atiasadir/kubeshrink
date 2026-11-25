@@ -40,11 +40,18 @@ fmt:
 example: build ## Explain the synthetic weekend example
 	./bin/kubeshrink explain nodes -f examples/weekend-scale-down
 
-chart: ## Lint the Helm chart and render it with each monitor
+# Any well-formed digest, to check how the chart renders a pinned image.
+CHART_TEST_DIGEST := sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+
+chart: ## Lint the Helm chart, render it with each monitor and check the image reference
 	helm lint --strict charts/kubeshrink
 	helm template kubeshrink charts/kubeshrink > /dev/null
 	helm template kubeshrink charts/kubeshrink --set serviceMonitor.enabled=true > /dev/null
 	helm template kubeshrink charts/kubeshrink --set podMonitor.enabled=true > /dev/null
+	helm template kubeshrink charts/kubeshrink | grep -q 'image: "kubeshrink:dev"'
+	helm template kubeshrink charts/kubeshrink --set image.digest=$(CHART_TEST_DIGEST) | grep -q 'image: "kubeshrink@$(CHART_TEST_DIGEST)"'
+	helm template kubeshrink charts/kubeshrink --set image.tag=v1 --set image.digest=$(CHART_TEST_DIGEST) | grep -q 'image: "kubeshrink:v1@$(CHART_TEST_DIGEST)"'
+	! helm template kubeshrink charts/kubeshrink --set image.digest=latest > /dev/null 2>&1
 
 image: ## Build the container image locally; nothing is pushed
 	docker build --build-arg VERSION=$(VERSION) --build-arg COMMIT=$(COMMIT) --build-arg DATE=$(DATE) -t $(IMAGE) .
