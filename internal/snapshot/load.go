@@ -37,6 +37,9 @@ type Snapshot struct {
 	ServerVersion string
 	// Skipped counts objects of kinds KubeShrink does not use yet.
 	Skipped map[string]int
+	// Unlisted names the resources the live reader was refused, for example
+	// by RBAC, so an in-cluster scan can count them as errors.
+	Unlisted []string
 	// Notes records gaps in the data, e.g. a kind the live reader could not list.
 	Notes []string
 }

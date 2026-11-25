@@ -10,12 +10,18 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"log/slog"
+	"net/http"
 	"os"
+	"os/signal"
 	"runtime/debug"
+	"strings"
+	"syscall"
 	"time"
 
 	"github.com/atiasadir/kubeshrink/internal/explain"
 	"github.com/atiasadir/kubeshrink/internal/live"
+	"github.com/atiasadir/kubeshrink/internal/serve"
 	"github.com/atiasadir/kubeshrink/internal/snapshot"
 )
 
@@ -34,6 +40,9 @@ Usage:
   kubeshrink explain node <name>       SOURCE [-o text|json]
   kubeshrink explain nodes             SOURCE [-o text|json]
   kubeshrink snapshot --context <name> --out <dir>
+  kubeshrink serve [--context <name>] [--listen :8080] [--interval 5m] [--pool-labels a,b]
+                                       in-cluster mode: Prometheus /metrics, /healthz, /readyz;
+                                       uses the pod's service account unless --context is given
   kubeshrink rules [-o text|json]
   kubeshrink version
 
@@ -76,6 +85,8 @@ func run(args []string, stdout, stderr io.Writer, loadLive liveLoader) int {
 		return runExplain(args[1:], stdout, stderr, loadLive)
 	case "snapshot":
 		return runSnapshot(args[1:], stdout, stderr, loadLive)
+	case "serve":
+		return runServe(args[1:], stderr, loadLive)
 	}
 	fmt.Fprintf(stderr, "unknown command %q\n\n%s", args[0], usage)
 	return 2
@@ -260,8 +271,62 @@ func runSnapshot(args []string, stdout, stderr io.Writer, loadLive liveLoader) i
 	return 0
 }
 
+func runServe(args []string, stderr io.Writer, loadLive liveLoader) int {
+	var o options
+	fs := newFlags("serve", stderr, &o)
+	listen := fs.String("listen", ":8080", "address for /metrics, /healthz and /readyz")
+	interval := fs.Duration("interval", 5*time.Minute, "time between scans (at least 10s)")
+	pools := fs.String("pool-labels", strings.Join(serve.DefaultPoolLabels, ","), "node labels to read the nodepool label from, in order")
+	pos, err := parseInterspersed(fs, args)
+	if err != nil {
+		return 2
+	}
+	switch {
+	case len(pos) != 0 || o.snapshot != "":
+		fmt.Fprint(stderr, "usage: kubeshrink serve [--context <name>] [--listen :8080] [--interval 5m] [--pool-labels a,b]\n")
+		return 2
+	case *interval < 10*time.Second:
+		fmt.Fprintf(stderr, "error: --interval must be at least 10s, got %s\n", *interval)
+		return 2
+	case o.nodeAutoscaler != explain.AutoscalerAuto && o.nodeAutoscaler != explain.CA && o.nodeAutoscaler != explain.AutoscalerNone:
+		fmt.Fprintf(stderr, "error: --node-autoscaler must be auto, cluster-autoscaler or none, got %q\n", o.nodeAutoscaler)
+		return 2
+	}
+	var labels []string
+	for _, l := range strings.Split(*pools, ",") {
+		if l = strings.TrimSpace(l); l != "" {
+			labels = append(labels, l)
+		}
+	}
+	if o.context == "" && os.Getenv("KUBERNETES_SERVICE_HOST") == "" {
+		fmt.Fprintln(stderr, "error: serve needs --context outside a cluster; in a pod it uses its service account")
+		return 2
+	}
+	lopts := live.Options{Kubeconfig: o.kubeconfig, Context: o.context, InCluster: o.context == ""}
+	v, c, _ := buildInfo()
+	logger := slog.New(slog.NewJSONHandler(stderr, nil))
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	srv := serve.New(serve.Config{
+		Listen: *listen, Interval: *interval, Timeout: o.timeout, PoolLabels: labels,
+		Options: explain.Options{NodeAutoscaler: o.nodeAutoscaler},
+		Load:    func(ctx context.Context) (*snapshot.Snapshot, error) { return loadLive(ctx, lopts) },
+		Logger:  logger, Version: v, Revision: c,
+	})
+	if err := srv.Run(ctx); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		logger.Error("stopped", "error", err.Error())
+		return 1
+	}
+	return 0
+}
+
 func versionString() string {
-	v, c, d := version, commit, date
+	v, c, d := buildInfo()
+	return fmt.Sprintf("kubeshrink %s (commit %s, built %s)", v, c, d)
+}
+
+func buildInfo() (v, c, d string) {
+	v, c, d = version, commit, date
 	if info, ok := debug.ReadBuildInfo(); ok && c == "" {
 		for _, s := range info.Settings {
 			switch s.Key {
@@ -278,5 +343,5 @@ func versionString() string {
 	if d == "" {
 		d = "unknown"
 	}
-	return fmt.Sprintf("kubeshrink %s (commit %s, built %s)", v, c, d)
+	return v, c, d
 }

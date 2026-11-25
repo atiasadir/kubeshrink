@@ -59,13 +59,23 @@ type Options struct {
 	Kubeconfig string
 	// Context must be named explicitly; there is no fallback to the current context.
 	Context string
+	// InCluster uses the pod's service account instead of a kubeconfig context.
+	InCluster bool
 	// SaveDir, when set, receives the raw lists as JSON so the run can be replayed offline.
 	SaveDir string
 }
 
 // Load builds a read-only client for the named context and fetches a snapshot.
 func Load(ctx context.Context, opts Options) (*snapshot.Snapshot, error) {
-	cfg, err := RESTConfig(opts.Kubeconfig, opts.Context)
+	var cfg *rest.Config
+	var err error
+	if opts.InCluster {
+		if cfg, err = rest.InClusterConfig(); err == nil {
+			tune(cfg)
+		}
+	} else {
+		cfg, err = RESTConfig(opts.Kubeconfig, opts.Context)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -108,12 +118,26 @@ func RESTConfig(kubeconfig, contextName string) (*rest.Config, error) {
 	if err != nil {
 		return nil, err
 	}
+	tune(cfg)
+	return cfg, nil
+}
+
+func tune(cfg *rest.Config) {
 	cfg.UserAgent = "kubeshrink (read-only)"
 	cfg.QPS, cfg.Burst = 20, 40
 	// Bound every request, so a slow API server cannot hang a run.
 	cfg.Timeout = 30 * time.Second
-	return cfg, nil
 }
+
+// ListError says which resource could not be listed.
+type ListError struct {
+	Resource string
+	Err      error
+}
+
+func (e *ListError) Error() string { return "list " + e.Resource + ": " + e.Err.Error() }
+
+func (e *ListError) Unwrap() error { return e.Err }
 
 // Fetch lists every resource in Resources and decodes it into a snapshot.
 func Fetch(ctx context.Context, client dynamic.Interface, saveDir string) (*snapshot.Snapshot, error) {
@@ -132,9 +156,12 @@ func Fetch(ctx context.Context, client dynamic.Interface, saveDir string) (*snap
 		if err != nil {
 			if !r.Required && (apierrors.IsNotFound(err) || apierrors.IsForbidden(err)) {
 				s.Notes = append(s.Notes, fmt.Sprintf("Could not list %s (%s); rules that use it had no data.", r.GVR.Resource, reason(err)))
+				if apierrors.IsForbidden(err) {
+					s.Unlisted = append(s.Unlisted, r.GVR.Resource)
+				}
 				continue
 			}
-			return nil, fmt.Errorf("list %s: %w", r.GVR.Resource, err)
+			return nil, &ListError{Resource: r.GVR.Resource, Err: err}
 		}
 		for i, raw := range items {
 			if err := s.AddObject(raw, r.Kind); err != nil {

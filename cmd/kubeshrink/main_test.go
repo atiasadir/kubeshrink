@@ -46,6 +46,8 @@ func TestRun(t *testing.T) {
 		{"namespace alias", []string{"explain", "ns", "ml", "-f", team, "-o", "json"}, 0, "\"namespace\": \"ml\"", ""},
 		{"team without a name", []string{"explain", "team", "-f", team}, 2, "", "usage: kubeshrink explain"},
 		{"bad node autoscaler", []string{"explain", "cluster", "-f", team, "--node-autoscaler", "maybe"}, 2, "", "--node-autoscaler"},
+		{"serve takes no snapshot", []string{"serve", "-f", team}, 2, "", "usage: kubeshrink serve"},
+		{"serve interval too short", []string{"serve", "--interval", "1s"}, 2, "", "at least 10s"},
 		{"rules as JSON", []string{"rules", "-o", "json"}, 0, "\"layer\": \"policy\"", ""},
 		{"no source", []string{"explain", "node", "node-a"}, 1, "", "a source is required"},
 		{"two sources", []string{"explain", "node", "node-a", "-f", example, "--context", "x"}, 1, "", "not both"},
@@ -106,5 +108,13 @@ func TestLiveModeUsesExplicitContext(t *testing.T) {
 	}
 	if !strings.Contains(errOut.String(), `reading context "kind-dev" read-only`) {
 		t.Errorf("missing read-only notice: %s", errOut.String())
+	}
+}
+
+func TestServeNeedsContextOutsideCluster(t *testing.T) {
+	t.Setenv("KUBERNETES_SERVICE_HOST", "")
+	var out, errOut bytes.Buffer
+	if code := run([]string{"serve"}, &out, &errOut, noLive); code != 2 || !strings.Contains(errOut.String(), "needs --context") {
+		t.Fatalf("code %d, stderr %q; want 2 and a hint to pass --context", code, errOut.String())
 	}
 }
