@@ -1,0 +1,17 @@
+{{- /* SPDX-License-Identifier: Apache-2.0 */ -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "kubeshrink.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "kubeshrink.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.service.type }}
+  selector:
+    {{- include "kubeshrink.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: metrics
+      port: {{ .Values.service.port }}
+      targetPort: metrics
+      protocol: TCP

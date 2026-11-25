@@ -1,0 +1,18 @@
+{{- /* SPDX-License-Identifier: Apache-2.0 */ -}}
+KubeShrink runs read-only in namespace {{ .Release.Namespace }}. It can get and
+list the kinds it explains, never Secrets or ConfigMaps, and changes nothing.
+
+It scans every {{ .Values.serve.interval }} and turns ready after the first
+successful scan.
+
+Metrics (queries: docs/metrics.md in the KubeShrink repository):
+  kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "kubeshrink.fullname" . }} {{ .Values.service.port }}
+  curl -s localhost:{{ .Values.service.port }}/metrics | grep '^kubeshrink_'
+
+Scan logs (JSON lines):
+  kubectl -n {{ .Release.Namespace }} logs deploy/{{ include "kubeshrink.fullname" . }}
+{{- if not (or .Values.serviceMonitor.enabled .Values.podMonitor.enabled) }}
+
+With the Prometheus Operator, set serviceMonitor.enabled=true or
+podMonitor.enabled=true to scrape it.
+{{- end }}

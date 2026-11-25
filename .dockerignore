@@ -1,0 +1,8 @@
+# SPDX-License-Identifier: Apache-2.0
+# Send the image build only what it compiles. Everything else stays out,
+# above all /.kubeshrink/ and /local/, where real-cluster output lives.
+*
+!go.mod
+!go.sum
+!cmd
+!internal

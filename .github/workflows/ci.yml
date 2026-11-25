@@ -38,3 +38,12 @@ jobs:
         with:
           go-version-file: go.mod
       - run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Lint and render the Helm chart
+        run: make chart
+      - name: Build the image (never pushed)
+        run: make image IMAGE=kubeshrink:ci

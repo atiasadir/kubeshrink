@@ -1,0 +1,29 @@
+{{- /* SPDX-License-Identifier: Apache-2.0 */ -}}
+{{- if .Values.rbac.create }}
+# Read-only: get and list on the kinds KubeShrink reads. No Secrets, no
+# ConfigMaps, no write verbs. The rules live in files/clusterrole-rules.yaml
+# so tests can check them without rendering the chart.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "kubeshrink.fullname" . }}
+  labels:
+    {{- include "kubeshrink.labels" . | nindent 4 }}
+rules:
+  {{- .Files.Get "files/clusterrole-rules.yaml" | nindent 2 }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "kubeshrink.fullname" . }}
+  labels:
+    {{- include "kubeshrink.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "kubeshrink.fullname" . }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "kubeshrink.serviceAccountName" . }}
+    namespace: {{ .Release.Namespace }}
+{{- end }}

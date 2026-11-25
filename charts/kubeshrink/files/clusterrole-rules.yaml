@@ -1,0 +1,25 @@
+# SPDX-License-Identifier: Apache-2.0
+# Rules of the chart's ClusterRole: get and list only, never Secrets or
+# ConfigMaps. Tests keep them equal to internal/live (Resources) and
+# docs/rbac.yaml.
+- apiGroups: [""]
+  resources: [nodes, pods, events]
+  verbs: [get, list]
+- apiGroups: [policy]
+  resources: [poddisruptionbudgets]
+  verbs: [get, list]
+- apiGroups: [autoscaling]
+  resources: [horizontalpodautoscalers]
+  verbs: [get, list]
+- apiGroups: [apps]
+  resources: [deployments, statefulsets, replicasets]
+  verbs: [get, list]
+- apiGroups: [keda.sh]
+  resources: [scaledobjects]
+  verbs: [get, list]
+- apiGroups: [autoscaling.k8s.io]
+  resources: [verticalpodautoscalers]
+  verbs: [get, list]
+- apiGroups: [karpenter.sh]
+  resources: [nodepools, nodeclaims]
+  verbs: [get, list]

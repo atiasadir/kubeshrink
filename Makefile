@@ -4,8 +4,9 @@ VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 COMMIT  ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
 DATE    ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
 LDFLAGS := -s -w -X main.version=$(VERSION) -X main.commit=$(COMMIT) -X main.date=$(DATE)
+IMAGE   ?= kubeshrink:dev
 
-.PHONY: all build plugin test lint vuln fmt example clean
+.PHONY: all build plugin test lint vuln fmt example chart image clean
 
 all: lint test build
 
@@ -29,6 +30,15 @@ fmt:
 
 example: build ## Explain the synthetic weekend example
 	./bin/kubeshrink explain nodes -f examples/weekend-scale-down
+
+chart: ## Lint the Helm chart and render it with each monitor
+	helm lint --strict charts/kubeshrink
+	helm template kubeshrink charts/kubeshrink > /dev/null
+	helm template kubeshrink charts/kubeshrink --set serviceMonitor.enabled=true > /dev/null
+	helm template kubeshrink charts/kubeshrink --set podMonitor.enabled=true > /dev/null
+
+image: ## Build the container image locally; nothing is pushed
+	docker build --build-arg VERSION=$(VERSION) --build-arg COMMIT=$(COMMIT) --build-arg DATE=$(DATE) -t $(IMAGE) .
 
 clean:
 	rm -rf bin dist

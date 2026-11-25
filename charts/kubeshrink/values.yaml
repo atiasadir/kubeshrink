@@ -1,0 +1,75 @@
+# SPDX-License-Identifier: Apache-2.0
+# Values for the KubeShrink chart. KubeShrink only reads the cluster: its
+# ClusterRole grants get and list on the kinds it explains, never Secrets or
+# ConfigMaps, and it writes nothing.
+
+image:
+  # No image is published yet. Build it locally with `make image`.
+  repository: kubeshrink
+  # Defaults to the chart's appVersion.
+  tag: ""
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+serve:
+  # Time between scans, at least 10s.
+  interval: 5m
+  # Limit for one whole scan. Empty keeps the binary's default.
+  timeout: ""
+  # auto detects Karpenter or Cluster Autoscaler. Or: cluster-autoscaler, none.
+  nodeAutoscaler: auto
+  # Node labels read, in order, for the nodepool label of kubeshrink_nodes.
+  poolLabels:
+    - karpenter.sh/nodepool
+    - kubernetes.azure.com/agentpool
+    - eks.amazonaws.com/nodegroup
+    - cloud.google.com/gke-nodepool
+  # Port for /metrics, /healthz and /readyz.
+  port: 8080
+
+serviceAccount:
+  create: true
+  # Defaults to the release's full name.
+  name: ""
+  annotations: {}
+
+rbac:
+  # Create the read-only ClusterRole and bind it to the service account.
+  create: true
+
+service:
+  type: ClusterIP
+  port: 8080
+
+# Prometheus Operator scraping, off by default. Enable one of the two, not
+# both. Each needs the monitoring.coreos.com/v1 CRDs.
+serviceMonitor:
+  enabled: false
+  # Empty uses Prometheus' default.
+  interval: ""
+  scrapeTimeout: ""
+  # Extra labels, e.g. the one your Prometheus selects monitors by.
+  labels: {}
+
+podMonitor:
+  enabled: false
+  interval: ""
+  scrapeTimeout: ""
+  labels: {}
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    memory: 256Mi
+
+podAnnotations: {}
+podLabels: {}
+priorityClassName: ""
+nodeSelector: {}
+tolerations: []
+affinity: {}

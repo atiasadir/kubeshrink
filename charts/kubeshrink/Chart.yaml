@@ -1,0 +1,13 @@
+# SPDX-License-Identifier: Apache-2.0
+apiVersion: v2
+name: kubeshrink
+description: Runs KubeShrink read-only inside a cluster. It explains why capacity does not shrink and exports what it finds as low-cardinality Prometheus metrics.
+type: application
+# A proof of concept: nothing is published yet. appVersion matches the
+# locally built image tag (make image).
+version: 0.1.0
+appVersion: "dev"
+# The oldest Kubernetes that serves autoscaling/v2 and policy/v1. The
+# versions actually tested are in docs/compatibility.md.
+kubeVersion: ">=1.23.0-0"
+keywords: [kubernetes, autoscaling, capacity, karpenter, keda, vpa]
