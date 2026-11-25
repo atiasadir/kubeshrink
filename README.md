@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/images/kubeshrink-logo.png" alt="KubeShrink" width="600">
+</p>
+
 # KubeShrink
 
 **Find out why your cluster won't shrink.**

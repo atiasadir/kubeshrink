@@ -7,6 +7,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Added
 
+- Project logo (`docs/images/kubeshrink-logo.png`) shown in the README, and a square icon (`docs/images/kubeshrink-icon.png`) for avatars and favicons.
 - `kubeshrink explain node <name>` and `explain nodes` over offline snapshots (multi-document YAML, kubectl `List`s, JSON).
 - Live read-only mode (`--context`, list calls only, never Secrets or ConfigMaps) and `kubeshrink snapshot --out` for offline replay.
 - Rules: `karpenter-do-not-disrupt`, `ca-scale-down-disabled`, `ca-safe-to-evict-false`, `pdb-zero-disruptions`, `multiple-pdbs`, `pod-without-controller`, `local-storage`, `kube-system-pod`, `utilization-above-threshold`, `no-room-elsewhere`, `replica-floor`, `keda-paused`, `keda-hpa-conflict`, `downscaler-excluded`, `downscaler-vs-hpa-floor`, `autoscaler-event`.
