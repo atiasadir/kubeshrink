@@ -7,6 +7,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Added
 
+- `kubeshrink explain cluster`: the nodes that run against the nodes the requests would fit on (per pool, a request-based lower bound), request-based packing, the rules that keep nodes, workloads held at a replica floor, and namespaces ranked by the idle capacity they hold (`--top`).
+- `kubeshrink explain team <namespace>` (aliases `namespace`, `ns`): a team's requests, its share of the idle capacity on its nodes, its packing, and the findings behind them.
+- Findings carry a layer (`replicas`, `policy`, `nodes`), an ID (`F1`, `F2`, ...) and a plain-language meaning; reports group findings by layer.
+- The placement check covers required node affinity, required pod affinity and anti-affinity, enforced topology spread and host ports; pod requests count init containers, native sidecars and pod overhead.
+- Karpenter NodePools and NodeClaims: rules `karpenter-consolidation-policy`, `karpenter-consolidation-disabled`, `karpenter-budget` and `karpenter-not-consolidatable-yet`; NodeClaim events are quoted with a plain-language reading, and an autoscaler event saying it keeps a node is a possible blocker.
+- `spread-constraint` rule for replicas that must stay apart.
+- Node autoscaler detection (Karpenter label, Cluster Autoscaler pods or events, otherwise unknown) and `--node-autoscaler auto|cluster-autoscaler|none`.
+- Live mode reads Karpenter NodePools and NodeClaims (`karpenter.sh/v1`, falling back to `v1beta1`), records the snapshot time and Kubernetes version in `snapshot-info.json`, and bounds each request at 30 seconds.
+- `kubeshrink rules -o json`.
+- Synthetic `examples/team-bin-packing` scenario.
 - README and design doc state that this version uses rules only and that AI is the next layer of the loop.
 - Project logo (`docs/images/kubeshrink-logo.png`) shown in the README, and a square icon (`docs/images/kubeshrink-icon.png`) for avatars and favicons.
 - `kubeshrink explain node <name>` and `explain nodes` over offline snapshots (multi-document YAML, kubectl `List`s, JSON).
