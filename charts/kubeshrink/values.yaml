@@ -8,6 +8,9 @@ image:
   repository: kubeshrink
   # Defaults to the chart's appVersion.
   tag: ""
+  # Pins the image by digest, e.g. sha256:4f6c... The pod then runs exactly
+  # the image you scanned, even if the tag is pushed again later.
+  digest: ""
   pullPolicy: IfNotPresent
 
 imagePullSecrets: []
