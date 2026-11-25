@@ -9,6 +9,7 @@ The chart declares `kubeVersion: ">=1.23.0-0"` because 1.23 is the oldest Kubern
 | Version | Cluster | What ran |
 | --- | --- | --- |
 | 1.34.1 | Docker Desktop, one node | In-cluster mode: the Helm chart (install, upgrade, uninstall), `/metrics`, `/healthz` and `/readyz`, scraping through a ServiceMonitor and a PodMonitor, and a server-side dry run of the `restricted` Pod Security Standard |
+| 1.35.8 | kind 0.33.0, one node, created and deleted by `make e2e` | The CLI on `examples/local-demo/workloads.yaml` (a live scan and a replay of its snapshot) and the chart: install, `/metrics`, JSON logs, the service account's permissions and uninstall |
 | 1.35.9 | A managed cluster whose nodes Karpenter provisions | The live read-only CLI: `snapshot` and `explain` |
 
 The Kubernetes client libraries (`client-go`, `apimachinery`) moved from 0.34.2 to 0.37.2 on 2026-11-25. The Docker Desktop checks were repeated with 0.37.2: install, readiness, two scans, `/metrics` through `promtool check metrics`, the service account's permissions and uninstall. The managed-cluster run used 0.34.2 and has not been repeated.
@@ -36,13 +37,14 @@ Offline mode and the unit tests read synthetic snapshots (see `examples/`), so t
 | promtool | 3.16.0 | `promtool check metrics` on `/metrics` |
 | Docker | 29.1.2 with the containerd image store | Building the image |
 | Trivy | 0.76.2 | Scanning the image (`make scan`) |
+| kind | 0.33.0, through `go run` | The throwaway cluster of `make e2e` |
 
 ## Image
 
 | Platform | Status |
 | --- | --- |
-| `linux/arm64` | Built locally and run in the Docker Desktop cluster |
-| `linux/amd64` | Built and scanned in CI; not yet run in a cluster |
+| `linux/arm64` | Built locally and run in the Docker Desktop cluster and in kind (`make e2e`) |
+| `linux/amd64` | Built and scanned in CI, and run in a kind cluster by the CI `e2e` job |
 
 ## Not tested yet
 

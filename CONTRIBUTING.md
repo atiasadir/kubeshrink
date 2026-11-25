@@ -11,11 +11,15 @@ Thanks for your interest! KubeShrink is an early prototype, so issues describing
 ## Development
 
 ```sh
-make test     # go test -race ./...
-make lint     # golangci-lint run (install: https://golangci-lint.run/welcome/install/)
+make build    # build bin/kubeshrink
+make test     # unit tests with the race detector
+make lint     # golangci-lint (install: https://golangci-lint.run/welcome/install/)
+make e2e      # end-to-end tests on a throwaway kind cluster (needs Docker, kubectl and helm)
 make vuln     # govulncheck
 make example  # run against the synthetic example
 ```
+
+`make e2e` builds the `kubeshrink:e2e` image, creates a kind cluster named `kubeshrink-e2e` with its own kubeconfig file (your `~/.kube/config` is never touched), runs `test/e2e` and deletes the cluster again, also when a test fails. The tests apply `examples/local-demo/workloads.yaml`, check that a live scan and a replay of its snapshot report the expected rules, then install the chart and check `/metrics`, the JSON logs, the service account's permissions and that `helm uninstall` leaves nothing behind. CI runs the same target on every pull request.
 
 ## Adding a rule
 
