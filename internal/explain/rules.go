@@ -135,67 +135,80 @@ func checkPDBs(c *nodeContext) []Finding {
 	var out []Finding
 	for _, p := range c.movable {
 		pdbs := c.snap.PDBsFor(p)
+		if len(pdbs) == 0 {
+			continue
+		}
 		ref := podRef(p)
 		labels := Evidence{Object: ref, Field: ".metadata.labels", Value: fmtLabels(p.Metadata.Labels)}
 		switch {
-		case len(pdbs) == 0:
-			continue
 		case len(pdbs) > 1:
-			ev := []Evidence{labels}
-			for _, b := range pdbs {
-				ev = append(ev, Evidence{Object: pdbRef(b), Field: ".spec.selector", Value: "matches this pod"})
-			}
-			out = append(out, Finding{
-				Rule: "multiple-pdbs", Severity: Blocker, Subject: ref,
-				AppliesTo: bothAutoscalers, Confidence: High,
-				Claim:    fmt.Sprintf("%d PodDisruptionBudgets select this pod. The eviction API refuses to evict a pod covered by more than one PDB, so the node cannot be drained.", len(pdbs)),
-				Evidence: ev,
-				Unknowns: []string{"Autoscalers may emit no event for this; recent Kubernetes versions record a MultiplePodDisruptionBudgets event on the pod."},
-			})
-			continue
+			out = append(out, multiplePDBsFinding(ref, labels, pdbs))
+		case pdbs[0].Status.DisruptionsAllowed == nil:
+			out = append(out, pdbStatusMissingFinding(ref, labels, pdbs[0]))
+		case *pdbs[0].Status.DisruptionsAllowed <= 0:
+			out = append(out, zeroDisruptionsFinding(ref, labels, pdbs[0]))
 		}
-		b := pdbs[0]
-		bref := pdbRef(b)
-		if b.Status.DisruptionsAllowed == nil {
-			out = append(out, Finding{
-				Rule: "pdb-zero-disruptions", Severity: PossibleBlocker, Subject: ref,
-				AppliesTo: bothAutoscalers, Confidence: Low,
-				Claim:    fmt.Sprintf("PodDisruptionBudget %s selects this pod, but the snapshot has no .status.disruptionsAllowed, so whether it blocks eviction is unknown.", b.Metadata.Name),
-				Evidence: []Evidence{labels, {Object: bref, Field: ".status.disruptionsAllowed", Value: "(missing)"}},
-				Unknowns: []string{"Export the PDB with its status (kubectl get pdb -o yaml) to resolve this."},
-			})
-			continue
-		}
-		if *b.Status.DisruptionsAllowed > 0 {
-			continue
-		}
-		ev := []Evidence{
-			{Object: bref, Field: ".status.disruptionsAllowed", Value: "0"},
-			{Object: bref, Field: ".status.currentHealthy / .status.desiredHealthy", Value: fmt.Sprintf("%d / %d", b.Status.CurrentHealthy, b.Status.DesiredHealthy)},
-		}
-		if snapshot.HasValue(b.Spec.MinAvailable) {
-			ev = append(ev, Evidence{Object: bref, Field: ".spec.minAvailable", Value: strings.Trim(string(b.Spec.MinAvailable), `"`)})
-		}
-		if snapshot.HasValue(b.Spec.MaxUnavailable) {
-			ev = append(ev, Evidence{Object: bref, Field: ".spec.maxUnavailable", Value: strings.Trim(string(b.Spec.MaxUnavailable), `"`)})
-		}
-		ev = append(ev, labels)
-		var alt string
-		if b.Status.CurrentHealthy < b.Status.DesiredHealthy {
-			alt = "Transient: fewer pods are healthy than the budget requires; the budget may open up once they become ready."
-		} else {
-			alt = "Structural: every healthy pod is needed to satisfy the budget (e.g. minAvailable equals the replica count, or maxUnavailable is 0). It stays at zero until the budget or the replica count changes."
-		}
-		out = append(out, Finding{
-			Rule: "pdb-zero-disruptions", Severity: Blocker, Subject: ref,
-			AppliesTo: bothAutoscalers, Confidence: High,
-			Claim:        fmt.Sprintf("PodDisruptionBudget %s currently allows 0 disruptions, so this pod cannot be evicted and the node cannot be drained.", b.Metadata.Name),
-			Evidence:     ev,
-			Alternatives: []string{alt},
-			Unknowns:     []string{"The snapshot is one moment; disruptionsAllowed changes as pods become ready or unready."},
-		})
 	}
 	return out
+}
+
+// multiplePDBsFinding reports a pod that more than one PodDisruptionBudget
+// selects. The eviction API refuses to evict such a pod.
+func multiplePDBsFinding(ref string, labels Evidence, pdbs []*snapshot.PodDisruptionBudget) Finding {
+	ev := []Evidence{labels}
+	for _, b := range pdbs {
+		ev = append(ev, Evidence{Object: pdbRef(b), Field: ".spec.selector", Value: "matches this pod"})
+	}
+	return Finding{
+		Rule: "multiple-pdbs", Severity: Blocker, Subject: ref,
+		AppliesTo: bothAutoscalers, Confidence: High,
+		Claim:    fmt.Sprintf("%d PodDisruptionBudgets select this pod. The eviction API refuses to evict a pod covered by more than one PDB, so the node cannot be drained.", len(pdbs)),
+		Evidence: ev,
+		Unknowns: []string{"Autoscalers may emit no event for this; recent Kubernetes versions record a MultiplePodDisruptionBudgets event on the pod."},
+	}
+}
+
+// pdbStatusMissingFinding reports a PodDisruptionBudget whose status is not in
+// the snapshot, so it may or may not block eviction.
+func pdbStatusMissingFinding(ref string, labels Evidence, b *snapshot.PodDisruptionBudget) Finding {
+	return Finding{
+		Rule: "pdb-zero-disruptions", Severity: PossibleBlocker, Subject: ref,
+		AppliesTo: bothAutoscalers, Confidence: Low,
+		Claim:    fmt.Sprintf("PodDisruptionBudget %s selects this pod, but the snapshot has no .status.disruptionsAllowed, so whether it blocks eviction is unknown.", b.Metadata.Name),
+		Evidence: []Evidence{labels, {Object: pdbRef(b), Field: ".status.disruptionsAllowed", Value: "(missing)"}},
+		Unknowns: []string{"Export the PDB with its status (kubectl get pdb -o yaml) to resolve this."},
+	}
+}
+
+// zeroDisruptionsFinding reports a PodDisruptionBudget that allows no
+// disruptions right now, and whether that looks transient or structural.
+func zeroDisruptionsFinding(ref string, labels Evidence, b *snapshot.PodDisruptionBudget) Finding {
+	bref := pdbRef(b)
+	ev := []Evidence{
+		{Object: bref, Field: ".status.disruptionsAllowed", Value: "0"},
+		{Object: bref, Field: ".status.currentHealthy / .status.desiredHealthy", Value: fmt.Sprintf("%d / %d", b.Status.CurrentHealthy, b.Status.DesiredHealthy)},
+	}
+	if snapshot.HasValue(b.Spec.MinAvailable) {
+		ev = append(ev, Evidence{Object: bref, Field: ".spec.minAvailable", Value: strings.Trim(string(b.Spec.MinAvailable), `"`)})
+	}
+	if snapshot.HasValue(b.Spec.MaxUnavailable) {
+		ev = append(ev, Evidence{Object: bref, Field: ".spec.maxUnavailable", Value: strings.Trim(string(b.Spec.MaxUnavailable), `"`)})
+	}
+	ev = append(ev, labels)
+	var alt string
+	if b.Status.CurrentHealthy < b.Status.DesiredHealthy {
+		alt = "Transient: fewer pods are healthy than the budget requires; the budget may open up once they become ready."
+	} else {
+		alt = "Structural: every healthy pod is needed to satisfy the budget (e.g. minAvailable equals the replica count, or maxUnavailable is 0). It stays at zero until the budget or the replica count changes."
+	}
+	return Finding{
+		Rule: "pdb-zero-disruptions", Severity: Blocker, Subject: ref,
+		AppliesTo: bothAutoscalers, Confidence: High,
+		Claim:        fmt.Sprintf("PodDisruptionBudget %s currently allows 0 disruptions, so this pod cannot be evicted and the node cannot be drained.", b.Metadata.Name),
+		Evidence:     ev,
+		Alternatives: []string{alt},
+		Unknowns:     []string{"The snapshot is one moment; disruptionsAllowed changes as pods become ready or unready."},
+	}
 }
 
 func pdbRef(b *snapshot.PodDisruptionBudget) string {
