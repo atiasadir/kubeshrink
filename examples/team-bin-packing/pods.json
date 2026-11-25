@@ -1,0 +1,463 @@
+{
+ "apiVersion": "v1",
+ "kind": "PodList",
+ "items": [
+  {
+   "apiVersion": "v1",
+   "kind": "Pod",
+   "metadata": {
+    "name": "api-7d9f-a",
+    "namespace": "checkout",
+    "labels": {
+     "app": "api"
+    },
+    "ownerReferences": [
+     {
+      "kind": "ReplicaSet",
+      "name": "api-7d9f",
+      "controller": true
+     }
+    ]
+   },
+   "spec": {
+    "nodeName": "general-a",
+    "containers": [
+     {
+      "name": "api",
+      "resources": {
+       "requests": {
+        "cpu": "500m",
+        "memory": "1Gi"
+       }
+      }
+     }
+    ],
+    "affinity": {
+     "podAntiAffinity": {
+      "requiredDuringSchedulingIgnoredDuringExecution": [
+       {
+        "labelSelector": {
+         "matchLabels": {
+          "app": "api"
+         }
+        },
+        "topologyKey": "kubernetes.io/hostname"
+       }
+      ]
+     }
+    }
+   },
+   "status": {
+    "phase": "Running"
+   }
+  },
+  {
+   "apiVersion": "v1",
+   "kind": "Pod",
+   "metadata": {
+    "name": "api-7d9f-b",
+    "namespace": "checkout",
+    "labels": {
+     "app": "api"
+    },
+    "ownerReferences": [
+     {
+      "kind": "ReplicaSet",
+      "name": "api-7d9f",
+      "controller": true
+     }
+    ]
+   },
+   "spec": {
+    "nodeName": "general-b",
+    "containers": [
+     {
+      "name": "api",
+      "resources": {
+       "requests": {
+        "cpu": "500m",
+        "memory": "1Gi"
+       }
+      }
+     }
+    ],
+    "affinity": {
+     "podAntiAffinity": {
+      "requiredDuringSchedulingIgnoredDuringExecution": [
+       {
+        "labelSelector": {
+         "matchLabels": {
+          "app": "api"
+         }
+        },
+        "topologyKey": "kubernetes.io/hostname"
+       }
+      ]
+     }
+    }
+   },
+   "status": {
+    "phase": "Running"
+   }
+  },
+  {
+   "apiVersion": "v1",
+   "kind": "Pod",
+   "metadata": {
+    "name": "api-7d9f-c",
+    "namespace": "checkout",
+    "labels": {
+     "app": "api"
+    },
+    "ownerReferences": [
+     {
+      "kind": "ReplicaSet",
+      "name": "api-7d9f",
+      "controller": true
+     }
+    ]
+   },
+   "spec": {
+    "nodeName": "general-c",
+    "containers": [
+     {
+      "name": "api",
+      "resources": {
+       "requests": {
+        "cpu": "500m",
+        "memory": "1Gi"
+       }
+      }
+     }
+    ],
+    "affinity": {
+     "podAntiAffinity": {
+      "requiredDuringSchedulingIgnoredDuringExecution": [
+       {
+        "labelSelector": {
+         "matchLabels": {
+          "app": "api"
+         }
+        },
+        "topologyKey": "kubernetes.io/hostname"
+       }
+      ]
+     }
+    }
+   },
+   "status": {
+    "phase": "Running"
+   }
+  },
+  {
+   "apiVersion": "v1",
+   "kind": "Pod",
+   "metadata": {
+    "name": "worker-5c8b-a",
+    "namespace": "reports",
+    "labels": {
+     "app": "worker"
+    },
+    "ownerReferences": [
+     {
+      "kind": "ReplicaSet",
+      "name": "worker-5c8b",
+      "controller": true
+     }
+    ]
+   },
+   "spec": {
+    "nodeName": "general-a",
+    "containers": [
+     {
+      "name": "worker",
+      "resources": {
+       "requests": {
+        "cpu": "1",
+        "memory": "2Gi"
+       }
+      }
+     }
+    ]
+   },
+   "status": {
+    "phase": "Running"
+   }
+  },
+  {
+   "apiVersion": "v1",
+   "kind": "Pod",
+   "metadata": {
+    "name": "worker-5c8b-b",
+    "namespace": "reports",
+    "labels": {
+     "app": "worker"
+    },
+    "ownerReferences": [
+     {
+      "kind": "ReplicaSet",
+      "name": "worker-5c8b",
+      "controller": true
+     }
+    ]
+   },
+   "spec": {
+    "nodeName": "general-b",
+    "containers": [
+     {
+      "name": "worker",
+      "resources": {
+       "requests": {
+        "cpu": "1",
+        "memory": "2Gi"
+       }
+      }
+     }
+    ]
+   },
+   "status": {
+    "phase": "Running"
+   }
+  },
+  {
+   "apiVersion": "v1",
+   "kind": "Pod",
+   "metadata": {
+    "name": "nightly-export-29f1x",
+    "namespace": "batch",
+    "labels": {
+     "job-name": "nightly-export"
+    },
+    "ownerReferences": [
+     {
+      "kind": "Job",
+      "name": "nightly-export",
+      "controller": true
+     }
+    ]
+   },
+   "spec": {
+    "nodeName": "general-c",
+    "containers": [
+     {
+      "name": "nightly",
+      "resources": {
+       "requests": {
+        "cpu": "250m"
+       }
+      }
+     }
+    ]
+   },
+   "status": {
+    "phase": "Running"
+   }
+  },
+  {
+   "apiVersion": "v1",
+   "kind": "Pod",
+   "metadata": {
+    "name": "trainer-0",
+    "namespace": "ml",
+    "labels": {
+     "app": "trainer"
+    },
+    "ownerReferences": [
+     {
+      "kind": "StatefulSet",
+      "name": "trainer",
+      "controller": true
+     }
+    ]
+   },
+   "spec": {
+    "nodeName": "ml-a",
+    "containers": [
+     {
+      "name": "trainer",
+      "resources": {
+       "requests": {
+        "cpu": "2",
+        "memory": "8Gi"
+       }
+      }
+     }
+    ],
+    "nodeSelector": {
+     "team": "ml"
+    },
+    "tolerations": [
+     {
+      "key": "dedicated",
+      "operator": "Equal",
+      "value": "ml",
+      "effect": "NoSchedule"
+     }
+    ]
+   },
+   "status": {
+    "phase": "Running"
+   }
+  },
+  {
+   "apiVersion": "v1",
+   "kind": "Pod",
+   "metadata": {
+    "name": "node-exporter-general-a",
+    "namespace": "monitoring",
+    "labels": {
+     "app": "node-exporter"
+    },
+    "ownerReferences": [
+     {
+      "kind": "DaemonSet",
+      "name": "node-exporter",
+      "controller": true
+     }
+    ]
+   },
+   "spec": {
+    "nodeName": "general-a",
+    "containers": [
+     {
+      "name": "node",
+      "resources": {
+       "requests": {
+        "cpu": "100m",
+        "memory": "128Mi"
+       }
+      }
+     }
+    ],
+    "tolerations": [
+     {
+      "operator": "Exists"
+     }
+    ]
+   },
+   "status": {
+    "phase": "Running"
+   }
+  },
+  {
+   "apiVersion": "v1",
+   "kind": "Pod",
+   "metadata": {
+    "name": "node-exporter-general-b",
+    "namespace": "monitoring",
+    "labels": {
+     "app": "node-exporter"
+    },
+    "ownerReferences": [
+     {
+      "kind": "DaemonSet",
+      "name": "node-exporter",
+      "controller": true
+     }
+    ]
+   },
+   "spec": {
+    "nodeName": "general-b",
+    "containers": [
+     {
+      "name": "node",
+      "resources": {
+       "requests": {
+        "cpu": "100m",
+        "memory": "128Mi"
+       }
+      }
+     }
+    ],
+    "tolerations": [
+     {
+      "operator": "Exists"
+     }
+    ]
+   },
+   "status": {
+    "phase": "Running"
+   }
+  },
+  {
+   "apiVersion": "v1",
+   "kind": "Pod",
+   "metadata": {
+    "name": "node-exporter-general-c",
+    "namespace": "monitoring",
+    "labels": {
+     "app": "node-exporter"
+    },
+    "ownerReferences": [
+     {
+      "kind": "DaemonSet",
+      "name": "node-exporter",
+      "controller": true
+     }
+    ]
+   },
+   "spec": {
+    "nodeName": "general-c",
+    "containers": [
+     {
+      "name": "node",
+      "resources": {
+       "requests": {
+        "cpu": "100m",
+        "memory": "128Mi"
+       }
+      }
+     }
+    ],
+    "tolerations": [
+     {
+      "operator": "Exists"
+     }
+    ]
+   },
+   "status": {
+    "phase": "Running"
+   }
+  },
+  {
+   "apiVersion": "v1",
+   "kind": "Pod",
+   "metadata": {
+    "name": "node-exporter-ml-a",
+    "namespace": "monitoring",
+    "labels": {
+     "app": "node-exporter"
+    },
+    "ownerReferences": [
+     {
+      "kind": "DaemonSet",
+      "name": "node-exporter",
+      "controller": true
+     }
+    ]
+   },
+   "spec": {
+    "nodeName": "ml-a",
+    "containers": [
+     {
+      "name": "node",
+      "resources": {
+       "requests": {
+        "cpu": "100m",
+        "memory": "128Mi"
+       }
+      }
+     }
+    ],
+    "tolerations": [
+     {
+      "operator": "Exists"
+     }
+    ]
+   },
+   "status": {
+    "phase": "Running"
+   }
+  }
+ ]
+}

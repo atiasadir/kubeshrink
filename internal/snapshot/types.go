@@ -68,6 +68,20 @@ type Taint struct {
 	Effect string `json:"effect"`
 }
 
+// String renders the taint the way kubectl does: key=value:effect.
+func (t Taint) String() string {
+	if t.Value == "" {
+		return t.Key + ":" + t.Effect
+	}
+	return t.Key + "=" + t.Value + ":" + t.Effect
+}
+
+// Restricts reports whether the taint keeps pods that do not tolerate it off
+// the node. PreferNoSchedule is only a preference.
+func (t Taint) Restricts() bool {
+	return t.Effect == "NoSchedule" || t.Effect == "NoExecute"
+}
+
 type NodeStatus struct {
 	Allocatable map[string]string `json:"allocatable,omitempty"`
 }
@@ -79,13 +93,15 @@ type Pod struct {
 }
 
 type PodSpec struct {
-	NodeName                  string            `json:"nodeName,omitempty"`
-	NodeSelector              map[string]string `json:"nodeSelector,omitempty"`
-	Tolerations               []Toleration      `json:"tolerations,omitempty"`
-	Containers                []Container       `json:"containers,omitempty"`
-	Volumes                   []Volume          `json:"volumes,omitempty"`
-	Affinity                  json.RawMessage   `json:"affinity,omitempty"`
-	TopologySpreadConstraints json.RawMessage   `json:"topologySpreadConstraints,omitempty"`
+	NodeName                  string                     `json:"nodeName,omitempty"`
+	NodeSelector              map[string]string          `json:"nodeSelector,omitempty"`
+	Tolerations               []Toleration               `json:"tolerations,omitempty"`
+	Affinity                  *Affinity                  `json:"affinity,omitempty"`
+	TopologySpreadConstraints []TopologySpreadConstraint `json:"topologySpreadConstraints,omitempty"`
+	InitContainers            []Container                `json:"initContainers,omitempty"`
+	Containers                []Container                `json:"containers,omitempty"`
+	Overhead                  map[string]string          `json:"overhead,omitempty"`
+	Volumes                   []Volume                   `json:"volumes,omitempty"`
 }
 
 type Toleration struct {
@@ -95,9 +111,46 @@ type Toleration struct {
 	Effect   string `json:"effect,omitempty"`
 }
 
+// Tolerates reports whether the toleration matches the taint. An empty
+// operator means Equal, and an empty effect matches every effect.
+func (t Toleration) Tolerates(taint Taint) bool {
+	if t.Effect != "" && t.Effect != taint.Effect {
+		return false
+	}
+	if t.Key == "" {
+		return t.Operator == "Exists"
+	}
+	if t.Key != taint.Key {
+		return false
+	}
+	return t.Operator == "Exists" || t.Value == taint.Value
+}
+
+// Tolerates reports whether any of the pod's tolerations matches the taint.
+func (p *Pod) Tolerates(taint Taint) bool {
+	for _, t := range p.Spec.Tolerations {
+		if t.Tolerates(taint) {
+			return true
+		}
+	}
+	return false
+}
+
 type Container struct {
-	Name      string               `json:"name"`
-	Resources ResourceRequirements `json:"resources"`
+	Name          string               `json:"name"`
+	Resources     ResourceRequirements `json:"resources"`
+	RestartPolicy string               `json:"restartPolicy,omitempty"`
+	Ports         []ContainerPort      `json:"ports,omitempty"`
+}
+
+// IsSidecar reports whether an init container keeps running next to the app
+// containers (a native sidecar, restartPolicy: Always).
+func (c Container) IsSidecar() bool { return c.RestartPolicy == "Always" }
+
+type ContainerPort struct {
+	ContainerPort int32  `json:"containerPort"`
+	HostPort      int32  `json:"hostPort,omitempty"`
+	Protocol      string `json:"protocol,omitempty"`
 }
 
 type ResourceRequirements struct {
@@ -118,6 +171,59 @@ type PodStatus struct {
 	Phase string `json:"phase,omitempty"`
 }
 
+// Affinity holds the scheduling rules KubeShrink evaluates. Preferred (soft)
+// rules are kept as raw JSON, only to report that they exist.
+type Affinity struct {
+	NodeAffinity    *NodeAffinity `json:"nodeAffinity,omitempty"`
+	PodAffinity     *PodAffinity  `json:"podAffinity,omitempty"`
+	PodAntiAffinity *PodAffinity  `json:"podAntiAffinity,omitempty"`
+}
+
+type NodeAffinity struct {
+	Required  *NodeSelector   `json:"requiredDuringSchedulingIgnoredDuringExecution,omitempty"`
+	Preferred json.RawMessage `json:"preferredDuringSchedulingIgnoredDuringExecution,omitempty"`
+}
+
+type NodeSelector struct {
+	NodeSelectorTerms []NodeSelectorTerm `json:"nodeSelectorTerms"`
+}
+
+type NodeSelectorTerm struct {
+	MatchExpressions []NodeSelectorRequirement `json:"matchExpressions,omitempty"`
+	MatchFields      []NodeSelectorRequirement `json:"matchFields,omitempty"`
+}
+
+type NodeSelectorRequirement struct {
+	Key      string   `json:"key"`
+	Operator string   `json:"operator"`
+	Values   []string `json:"values,omitempty"`
+}
+
+// PodAffinity is used for both podAffinity and podAntiAffinity.
+type PodAffinity struct {
+	Required  []PodAffinityTerm `json:"requiredDuringSchedulingIgnoredDuringExecution,omitempty"`
+	Preferred json.RawMessage   `json:"preferredDuringSchedulingIgnoredDuringExecution,omitempty"`
+}
+
+type PodAffinityTerm struct {
+	LabelSelector     *LabelSelector `json:"labelSelector,omitempty"`
+	Namespaces        []string       `json:"namespaces,omitempty"`
+	NamespaceSelector *LabelSelector `json:"namespaceSelector,omitempty"`
+	TopologyKey       string         `json:"topologyKey"`
+}
+
+type TopologySpreadConstraint struct {
+	MaxSkew           int32          `json:"maxSkew"`
+	TopologyKey       string         `json:"topologyKey"`
+	WhenUnsatisfiable string         `json:"whenUnsatisfiable"`
+	LabelSelector     *LabelSelector `json:"labelSelector,omitempty"`
+	MinDomains        *int32         `json:"minDomains,omitempty"`
+}
+
+// Enforced reports whether the scheduler refuses placements that break the
+// constraint (whenUnsatisfiable: DoNotSchedule).
+func (t TopologySpreadConstraint) Enforced() bool { return t.WhenUnsatisfiable != "ScheduleAnyway" }
+
 type PodDisruptionBudget struct {
 	Metadata ObjectMeta `json:"metadata"`
 	Spec     PDBSpec    `json:"spec"`
@@ -136,63 +242,6 @@ type PDBStatus struct {
 	CurrentHealthy     int32  `json:"currentHealthy,omitempty"`
 	DesiredHealthy     int32  `json:"desiredHealthy,omitempty"`
 	ExpectedPods       int32  `json:"expectedPods,omitempty"`
-}
-
-type LabelSelector struct {
-	MatchLabels      map[string]string          `json:"matchLabels,omitempty"`
-	MatchExpressions []LabelSelectorRequirement `json:"matchExpressions,omitempty"`
-}
-
-type LabelSelectorRequirement struct {
-	Key      string   `json:"key"`
-	Operator string   `json:"operator"`
-	Values   []string `json:"values,omitempty"`
-}
-
-// Matches follows policy/v1 semantics: a nil selector matches nothing and an
-// empty selector matches everything.
-func (s *LabelSelector) Matches(labels map[string]string) bool {
-	if s == nil {
-		return false
-	}
-	for k, v := range s.MatchLabels {
-		if lv, ok := labels[k]; !ok || lv != v {
-			return false
-		}
-	}
-	for _, e := range s.MatchExpressions {
-		lv, ok := labels[e.Key]
-		switch e.Operator {
-		case "In":
-			if !ok || !contains(e.Values, lv) {
-				return false
-			}
-		case "NotIn":
-			if ok && contains(e.Values, lv) {
-				return false
-			}
-		case "Exists":
-			if !ok {
-				return false
-			}
-		case "DoesNotExist":
-			if ok {
-				return false
-			}
-		default:
-			return false
-		}
-	}
-	return true
-}
-
-func contains(values []string, v string) bool {
-	for _, x := range values {
-		if x == v {
-			return true
-		}
-	}
-	return false
 }
 
 type CrossVersionObjectReference struct {
@@ -232,9 +281,12 @@ type ScaledObjectSpec struct {
 	IdleReplicaCount *int32                      `json:"idleReplicaCount,omitempty"`
 }
 
+// VerticalPodAutoscaler is an autoscaling.k8s.io/v1 VPA. Its recommendations
+// are evidence of over-requesting even when updateMode is Off.
 type VerticalPodAutoscaler struct {
 	Metadata ObjectMeta `json:"metadata"`
 	Spec     VPASpec    `json:"spec"`
+	Status   VPAStatus  `json:"status"`
 }
 
 type VPASpec struct {
@@ -244,6 +296,21 @@ type VPASpec struct {
 
 type VPAUpdatePolicy struct {
 	UpdateMode string `json:"updateMode,omitempty"`
+}
+
+type VPAStatus struct {
+	Recommendation *VPARecommendation `json:"recommendation,omitempty"`
+}
+
+type VPARecommendation struct {
+	ContainerRecommendations []ContainerRecommendation `json:"containerRecommendations,omitempty"`
+}
+
+type ContainerRecommendation struct {
+	ContainerName string            `json:"containerName"`
+	Target        map[string]string `json:"target,omitempty"`
+	LowerBound    map[string]string `json:"lowerBound,omitempty"`
+	UpperBound    map[string]string `json:"upperBound,omitempty"`
 }
 
 // Workload covers Deployments, StatefulSets and ReplicaSets.
@@ -262,6 +329,80 @@ type WorkloadStatus struct {
 	Replicas int32 `json:"replicas,omitempty"`
 }
 
+// LimitRange is a core/v1 LimitRange.
+type LimitRange struct {
+	Metadata ObjectMeta     `json:"metadata"`
+	Spec     LimitRangeSpec `json:"spec"`
+}
+
+type LimitRangeSpec struct {
+	Limits []LimitRangeItem `json:"limits"`
+}
+
+type LimitRangeItem struct {
+	Type           string            `json:"type"`
+	Default        map[string]string `json:"default,omitempty"`
+	DefaultRequest map[string]string `json:"defaultRequest,omitempty"`
+}
+
+// DefaultRequests returns the requests the LimitRange gives a container that
+// sets none: defaultRequest where present, otherwise the default limit, which
+// is what Kubernetes does.
+func (i LimitRangeItem) DefaultRequests() map[string]string {
+	out := map[string]string{}
+	for k, v := range i.Default {
+		out[k] = v
+	}
+	for k, v := range i.DefaultRequest {
+		out[k] = v
+	}
+	return out
+}
+
+// NodePool is a Karpenter NodePool (karpenter.sh/v1; v1beta1 reads the same way).
+type NodePool struct {
+	Metadata ObjectMeta   `json:"metadata"`
+	Spec     NodePoolSpec `json:"spec"`
+}
+
+type NodePoolSpec struct {
+	Disruption NodePoolDisruption `json:"disruption"`
+	Limits     map[string]string  `json:"limits,omitempty"`
+}
+
+type NodePoolDisruption struct {
+	ConsolidationPolicy string   `json:"consolidationPolicy,omitempty"`
+	ConsolidateAfter    string   `json:"consolidateAfter,omitempty"`
+	Budgets             []Budget `json:"budgets,omitempty"`
+}
+
+// Budget limits how many of a NodePool's nodes Karpenter may disrupt at once.
+type Budget struct {
+	Nodes    string   `json:"nodes"`
+	Schedule string   `json:"schedule,omitempty"`
+	Duration string   `json:"duration,omitempty"`
+	Reasons  []string `json:"reasons,omitempty"`
+}
+
+// NodeClaim is a Karpenter NodeClaim: the request that launched one node.
+type NodeClaim struct {
+	Metadata ObjectMeta      `json:"metadata"`
+	Status   NodeClaimStatus `json:"status"`
+}
+
+type NodeClaimStatus struct {
+	NodeName   string      `json:"nodeName,omitempty"`
+	Conditions []Condition `json:"conditions,omitempty"`
+}
+
+type Condition struct {
+	Type               string `json:"type"`
+	Status             string `json:"status"`
+	Reason             string `json:"reason,omitempty"`
+	Message            string `json:"message,omitempty"`
+	LastTransitionTime string `json:"lastTransitionTime,omitempty"`
+}
+
 // Event is a core/v1 Event.
 type Event struct {
 	Metadata           ObjectMeta      `json:"metadata"`
@@ -272,8 +413,19 @@ type Event struct {
 	Count              int32           `json:"count,omitempty"`
 	FirstTimestamp     string          `json:"firstTimestamp,omitempty"`
 	LastTimestamp      string          `json:"lastTimestamp,omitempty"`
+	EventTime          string          `json:"eventTime,omitempty"`
 	Source             EventSource     `json:"source"`
 	ReportingComponent string          `json:"reportingComponent,omitempty"`
+}
+
+// Time returns the most recent timestamp the event carries.
+func (e *Event) Time() string {
+	for _, t := range []string{e.LastTimestamp, e.EventTime, e.FirstTimestamp} {
+		if t != "" {
+			return t
+		}
+	}
+	return ""
 }
 
 type ObjectReference struct {

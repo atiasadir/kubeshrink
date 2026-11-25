@@ -27,12 +27,27 @@ type Snapshot struct {
 	ScaledObjects []ScaledObject
 	VPAs          []VerticalPodAutoscaler
 	Workloads     []Workload
+	LimitRanges   []LimitRange
+	NodePools     []NodePool
+	NodeClaims    []NodeClaim
 	Events        []Event
+	// TakenAt is when the objects were read from a cluster (RFC 3339), if known.
+	TakenAt string
+	// ServerVersion is the Kubernetes version the API server reported, if known.
+	ServerVersion string
 	// Skipped counts objects of kinds KubeShrink does not use yet.
 	Skipped map[string]int
 	// Notes records gaps in the data, e.g. a kind the live reader could not list.
 	Notes []string
 }
+
+// InfoKind is the kind of the small record a live export writes next to the
+// objects, so an offline replay knows when and from which Kubernetes version
+// they were read. InfoFile is its file name.
+const (
+	InfoKind = "SnapshotInfo"
+	InfoFile = "snapshot-info.json"
+)
 
 func New() *Snapshot { return &Snapshot{Skipped: map[string]int{}} }
 
@@ -123,12 +138,15 @@ func splitDocuments(data []byte) [][]byte {
 	return append(docs, cur.Bytes())
 }
 
-// AddObject decodes one JSON object (or List) into the snapshot. defaultKind is
-// used when the object itself carries no kind, as with typed List items.
+// AddObject decodes one JSON object (or List) into the snapshot. defaultKind
+// is used when the object itself carries no kind, as with typed List items.
 func (s *Snapshot) AddObject(raw []byte, defaultKind string) error {
 	var head struct {
-		Kind  string            `json:"kind"`
-		Items []json.RawMessage `json:"items"`
+		APIVersion    string            `json:"apiVersion"`
+		Kind          string            `json:"kind"`
+		Items         []json.RawMessage `json:"items"`
+		TakenAt       string            `json:"takenAt"`
+		ServerVersion string            `json:"serverVersion"`
 	}
 	if err := json.Unmarshal(raw, &head); err != nil {
 		return err
@@ -165,8 +183,23 @@ func (s *Snapshot) AddObject(raw []byte, defaultKind string) error {
 		}
 		s.Workloads[len(s.Workloads)-1].Kind = kind
 		return nil
+	case "LimitRange":
+		return decodeInto(raw, &s.LimitRanges)
+	case "NodePool", "NodeClaim":
+		// Other projects use these kind names too; only Karpenter's are understood.
+		if head.APIVersion != "" && !strings.HasPrefix(head.APIVersion, "karpenter.sh/") {
+			s.Skipped[kind]++
+			return nil
+		}
+		if kind == "NodePool" {
+			return decodeInto(raw, &s.NodePools)
+		}
+		return decodeInto(raw, &s.NodeClaims)
 	case "Event":
 		return decodeInto(raw, &s.Events)
+	case InfoKind:
+		s.TakenAt, s.ServerVersion = head.TakenAt, head.ServerVersion
+		return nil
 	case "":
 		return errors.New("object has no kind")
 	default:
@@ -184,31 +217,53 @@ func decodeInto[T any](raw []byte, dst *[]T) error {
 	return nil
 }
 
-// Validate checks the resource quantities the rules depend on, so the rules
-// themselves can assume well-formed numbers.
+// Validate checks every quantity the rules read, so the rules can assume
+// well-formed numbers.
 func (s *Snapshot) Validate() error {
 	for i := range s.Nodes {
 		n := &s.Nodes[i]
 		if n.Metadata.Name == "" {
 			return errors.New("a Node has no metadata.name")
 		}
-		for _, k := range trackedResources {
-			if v, ok := n.Status.Allocatable[k]; ok {
-				if _, err := ParseQuantity(v); err != nil {
-					return fmt.Errorf("%s .status.allocatable.%s: %w", Ref("Node", "", n.Metadata.Name), k, err)
-				}
-			}
+		if err := checkQuantities(Ref("Node", "", n.Metadata.Name)+" .status.allocatable", n.Status.Allocatable); err != nil {
+			return err
 		}
 	}
 	for i := range s.Pods {
 		p := &s.Pods[i]
-		for _, c := range p.Spec.Containers {
-			for _, k := range trackedResources {
-				if v, ok := c.Resources.Requests[k]; ok {
-					if _, err := ParseQuantity(v); err != nil {
-						return fmt.Errorf("%s container %s requests.%s: %w",
-							Ref("Pod", p.Metadata.Namespace, p.Metadata.Name), c.Name, k, err)
-					}
+		ref := Ref("Pod", p.Metadata.Namespace, p.Metadata.Name)
+		for _, list := range [][]Container{p.Spec.InitContainers, p.Spec.Containers} {
+			for _, c := range list {
+				if err := checkQuantities(ref+" container "+c.Name+" requests", c.Resources.Requests); err != nil {
+					return err
+				}
+			}
+		}
+		if err := checkQuantities(ref+" .spec.overhead", p.Spec.Overhead); err != nil {
+			return err
+		}
+	}
+	for i := range s.VPAs {
+		v := &s.VPAs[i]
+		if v.Status.Recommendation == nil {
+			continue
+		}
+		ref := Ref("VerticalPodAutoscaler", v.Metadata.Namespace, v.Metadata.Name)
+		for _, r := range v.Status.Recommendation.ContainerRecommendations {
+			for _, m := range []map[string]string{r.Target, r.LowerBound, r.UpperBound} {
+				if err := checkQuantities(ref+" recommendation for "+r.ContainerName, m); err != nil {
+					return err
+				}
+			}
+		}
+	}
+	for i := range s.LimitRanges {
+		l := &s.LimitRanges[i]
+		ref := Ref("LimitRange", l.Metadata.Namespace, l.Metadata.Name)
+		for _, item := range l.Spec.Limits {
+			for _, m := range []map[string]string{item.Default, item.DefaultRequest} {
+				if err := checkQuantities(ref+" .spec.limits", m); err != nil {
+					return err
 				}
 			}
 		}
@@ -217,3 +272,14 @@ func (s *Snapshot) Validate() error {
 }
 
 var trackedResources = []string{"cpu", "memory", "pods"}
+
+func checkQuantities(where string, m map[string]string) error {
+	for _, k := range trackedResources {
+		if v, ok := m[k]; ok {
+			if _, err := ParseQuantity(v); err != nil {
+				return fmt.Errorf("%s.%s: %w", where, k, err)
+			}
+		}
+	}
+	return nil
+}

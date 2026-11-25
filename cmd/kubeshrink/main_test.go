@@ -15,7 +15,10 @@ import (
 	"github.com/atiasadir/kubeshrink/internal/snapshot"
 )
 
-const example = "../../examples/weekend-scale-down"
+const (
+	example = "../../examples/weekend-scale-down"
+	team    = "../../examples/team-bin-packing"
+)
 
 func noLive(context.Context, live.Options) (*snapshot.Snapshot, error) {
 	return nil, errors.New("live mode must not be used in this test")
@@ -38,6 +41,12 @@ func TestRun(t *testing.T) {
 		{"flags before the name", []string{"explain", "--snapshot", example, "node", "node-d"}, 0, "NO-BLOCKER-FOUND", ""},
 		{"explain all nodes", []string{"explain", "nodes", "-f", example}, 0, "node-c", ""},
 		{"unknown node", []string{"explain", "node", "nope", "-f", example}, 1, "", "not found"},
+		{"explain cluster", []string{"explain", "cluster", "-f", team}, 0, "would fit on 2", ""},
+		{"explain a team", []string{"explain", "team", "checkout", "-f", team}, 0, "Namespace checkout", ""},
+		{"namespace alias", []string{"explain", "ns", "ml", "-f", team, "-o", "json"}, 0, "\"namespace\": \"ml\"", ""},
+		{"team without a name", []string{"explain", "team", "-f", team}, 2, "", "usage: kubeshrink explain"},
+		{"bad node autoscaler", []string{"explain", "cluster", "-f", team, "--node-autoscaler", "maybe"}, 2, "", "--node-autoscaler"},
+		{"rules as JSON", []string{"rules", "-o", "json"}, 0, "\"layer\": \"policy\"", ""},
 		{"no source", []string{"explain", "node", "node-a"}, 1, "", "a source is required"},
 		{"two sources", []string{"explain", "node", "node-a", "-f", example, "--context", "x"}, 1, "", "not both"},
 		{"bad output", []string{"explain", "node", "node-a", "-f", example, "-o", "xml"}, 2, "", "text or json"},

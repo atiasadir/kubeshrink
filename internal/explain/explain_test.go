@@ -398,7 +398,7 @@ func TestKarpenterNodeOmitsCAOnlyFindings(t *testing.T) {
 	if _, ok := got["karpenter-do-not-disrupt"]; !ok {
 		t.Error("Karpenter findings must be kept")
 	}
-	if r.ManagedBy != Karpenter || len(r.DataNotes) != 1 || !strings.Contains(r.DataNotes[0], "2 Cluster Autoscaler-only") {
+	if r.ManagedBy != Karpenter || !strings.Contains(strings.Join(r.DataNotes, "\n"), "2 finding(s) that only apply to Cluster Autoscaler were omitted") {
 		t.Errorf("ManagedBy = %q, DataNotes = %v", r.ManagedBy, r.DataNotes)
 	}
 }
@@ -451,7 +451,7 @@ func TestRenderers(t *testing.T) {
 	}
 	r, _ := ExplainNode(s, "node-a")
 	var text bytes.Buffer
-	if err := WriteText(&text, r); err != nil {
+	if err := WriteNodeText(&text, r); err != nil {
 		t.Fatal(err)
 	}
 	for _, want := range []string{"Node node-a: BLOCKED", "pdb-zero-disruptions", "Evidence:", "Limitations:"} {

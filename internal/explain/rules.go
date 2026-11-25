@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/atiasadir/kubeshrink/internal/snapshot"
 )
@@ -19,7 +20,6 @@ const (
 	annKedaPausedReplicas         = "autoscaling.keda.sh/paused-replicas"
 	annDownscalerExclude          = "downscaler/exclude"
 	annDownscalerDowntimeReplicas = "downscaler/downtime-replicas"
-	annMirrorPod                  = "kubernetes.io/config.mirror"
 
 	caDefaultUtilizationThreshold = 0.5
 )
@@ -66,7 +66,7 @@ func checkKarpenterDoNotDisrupt(c *nodeContext) []Finding {
 	if c.node.Metadata.Annotations[annKarpenterDoNotDisrupt] == "true" {
 		ref := nodeRef(c.node)
 		out = append(out, Finding{
-			Rule: "karpenter-do-not-disrupt", Severity: Blocker, Subject: ref,
+			Rule: "karpenter-do-not-disrupt", Layer: LayerNodes, Severity: Blocker, Subject: ref,
 			AppliesTo: []string{Karpenter}, Confidence: High,
 			Claim:        "The node is annotated karpenter.sh/do-not-disrupt=true, so Karpenter will not voluntarily disrupt it (no consolidation, drift or expiry replacement).",
 			Evidence:     []Evidence{{Object: ref, Field: annField(annKarpenterDoNotDisrupt), Value: "true"}},
@@ -296,12 +296,25 @@ func checkUtilization(c *nodeContext) []Finding {
 
 var disruptionReasons = map[string]bool{"DisruptionBlocked": true, "Unconsolidatable": true, "ScaleDownFailed": true, "ScaleDown": true}
 
+// blockingReasons are events in which an autoscaler says it keeps a node.
+var blockingReasons = map[string]bool{"DisruptionBlocked": true, "Unconsolidatable": true, "ScaleDownFailed": true}
+
+// checkAutoscalerEvents quotes what Cluster Autoscaler or Karpenter reported
+// about the node, its Karpenter NodeClaim or its pods. When an autoscaler
+// says it keeps the node, that is a possible blocker in its own words.
 func checkAutoscalerEvents(c *nodeContext) []Finding {
-	targets := map[string]bool{nodeRef(c.node): true}
+	nref := nodeRef(c.node)
+	targets := map[string]bool{nref: true}
+	var claimRef string
+	if nc := c.snap.NodeClaimForNode(c.node.Metadata.Name); nc != nil {
+		claimRef = snapshot.Ref("NodeClaim", "", nc.Metadata.Name)
+		targets[claimRef] = true
+	}
 	for _, p := range c.movable {
 		targets[podRef(p)] = true
 	}
 	var out []Finding
+	byMessage := map[string]int{}
 	for i := range c.snap.Events {
 		e := &c.snap.Events[i]
 		obj := snapshot.Ref(e.InvolvedObject.Kind, e.InvolvedObject.Namespace, e.InvolvedObject.Name)
@@ -312,23 +325,50 @@ func checkAutoscalerEvents(c *nodeContext) []Finding {
 		if who == "" && !disruptionReasons[e.Reason] {
 			continue
 		}
-		ts := e.LastTimestamp
-		if ts == "" {
-			ts = e.FirstTimestamp
+		ev := Evidence{Object: snapshot.Ref("Event", e.Metadata.Namespace, e.Metadata.Name), Field: ".reason, .message", Value: e.Reason + ": " + e.Message, Time: e.Time()}
+		key := e.Reason + "|" + e.Message
+		if j, ok := byMessage[key]; ok {
+			out[j].Evidence = append(out[j].Evidence, ev)
+			continue
 		}
 		reporter, applies := "A component", []string(nil)
 		if who != "" {
 			reporter, applies = who, []string{who}
 		}
+		sev, subject := Context, obj
+		if blockingReasons[e.Reason] && (obj == nref || obj == claimRef) {
+			sev, subject = PossibleBlocker, nref
+		}
+		claim := fmt.Sprintf("%s reported %s: %s", reporter, e.Reason, e.Message)
+		if e.Count > 1 {
+			claim += fmt.Sprintf(" (seen %d times)", e.Count)
+		}
+		unknowns := []string{"Events expire (one hour by default) and may describe an earlier state; compare the timestamp with when the snapshot was taken."}
+		if age := eventAge(c.snap.TakenAt, e.Time()); age != "" {
+			unknowns = []string{"Last seen " + age + " before the snapshot was taken."}
+		}
+		byMessage[key] = len(out)
 		out = append(out, Finding{
-			Rule: "autoscaler-event", Severity: Context, Subject: obj,
+			Rule: "autoscaler-event", Severity: sev, Subject: subject,
 			AppliesTo: applies, Confidence: High,
-			Claim:    fmt.Sprintf("%s reported %s: %s", reporter, e.Reason, e.Message),
-			Evidence: []Evidence{{Object: snapshot.Ref("Event", e.Metadata.Namespace, e.Metadata.Name), Field: ".reason, .message", Value: e.Reason + ": " + e.Message, Time: ts}},
-			Unknowns: []string{"Events expire (one hour by default) and may describe an earlier state; compare the timestamp with when the snapshot was taken."},
+			Claim:    claim,
+			Meaning:  eventMeaning(e.Message),
+			Evidence: []Evidence{ev},
+			Unknowns: unknowns,
 		})
 	}
 	return out
+}
+
+// eventAge renders how long before the snapshot an event was last seen, or
+// "" when either time is unknown.
+func eventAge(takenAt, seen string) string {
+	t, err1 := time.Parse(time.RFC3339, takenAt)
+	e, err2 := time.Parse(time.RFC3339, seen)
+	if err1 != nil || err2 != nil || e.After(t) {
+		return ""
+	}
+	return t.Sub(e).Round(time.Minute).String()
 }
 
 func autoscalerOf(e *snapshot.Event) string {

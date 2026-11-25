@@ -6,33 +6,86 @@ package explain
 import (
 	"fmt"
 	"sort"
+	"strings"
 
+	"github.com/atiasadir/kubeshrink/internal/capacity"
 	"github.com/atiasadir/kubeshrink/internal/snapshot"
 )
 
-// nodeContext is what every rule receives: the snapshot, the node being
-// explained, and the pods that would have to be evicted for it to go away.
+// AutoscalerAuto asks the analyzer to detect Cluster Autoscaler from the
+// snapshot; AutoscalerNone means no node autoscaler manages a node.
+const (
+	AutoscalerAuto    = "auto"
+	AutoscalerNone    = "none"
+	AutoscalerUnknown = "unknown"
+)
+
+// Options tune an analysis.
+type Options struct {
+	// NodeAutoscaler says what manages nodes without a Karpenter label:
+	// AutoscalerAuto (the default) looks for Cluster Autoscaler in the
+	// snapshot; CA or AutoscalerNone override that.
+	NodeAutoscaler string
+}
+
+// Analyzer explains one snapshot. It caches node reports, so cluster and
+// namespace views explain each node once.
+type Analyzer struct {
+	snap   *snapshot.Snapshot
+	opts   Options
+	att    *capacity.Attribution
+	caSeen bool
+	nodes  map[string]*NodeReport
+}
+
+// NewAnalyzer prepares an analysis of the snapshot.
+func NewAnalyzer(s *snapshot.Snapshot, opts Options) *Analyzer {
+	return &Analyzer{snap: s, opts: opts, att: capacity.Attribute(s), caSeen: clusterAutoscalerSeen(s), nodes: map[string]*NodeReport{}}
+}
+
+// ExplainNode explains one node with default options.
+func ExplainNode(s *snapshot.Snapshot, name string) (*NodeReport, error) {
+	return NewAnalyzer(s, Options{}).Node(name)
+}
+
+// ExplainAllNodes explains every node with default options.
+func ExplainAllNodes(s *snapshot.Snapshot) []*NodeReport {
+	return NewAnalyzer(s, Options{}).Nodes()
+}
+
+// nodeContext is what every node rule receives: the snapshot, the node being
+// explained, and the pods that would have to move for it to go away.
 type nodeContext struct {
 	snap    *snapshot.Snapshot
 	node    *snapshot.Node
 	movable []*snapshot.Pod
+	notes   *[]string
 }
 
-// ExplainNode answers "why can't this node be removed?" by running every rule
-// in Catalog against the node and collecting their findings.
-func ExplainNode(s *snapshot.Snapshot, name string) (*NodeReport, error) {
+func (c *nodeContext) note(msg string) { addNote(c.notes, msg) }
+
+// Node answers "why can't this node be removed?" by running every node rule
+// in Catalog against it.
+func (a *Analyzer) Node(name string) (*NodeReport, error) {
+	if r, ok := a.nodes[name]; ok {
+		return r, nil
+	}
+	s := a.snap
 	node := s.Node(name)
 	if node == nil {
 		return nil, fmt.Errorf("node %q not found (%d node(s) loaded)", name, len(s.Nodes))
 	}
-	c := &nodeContext{snap: s, node: node}
+	pool, _ := capacity.PoolOf(node)
 	r := &NodeReport{
 		Node:        name,
+		Pool:        pool,
+		Allocatable: snapshot.NodeAllocatable(node),
 		PodsToMove:  []string{},
 		Findings:    []Finding{},
 		DataNotes:   append([]string(nil), s.Notes...),
 		Limitations: Limitations,
 	}
+	c := &nodeContext{snap: s, node: node, notes: &r.DataNotes}
 	for i := range s.Pods {
 		p := &s.Pods[i]
 		if p.Spec.NodeName != name {
@@ -41,63 +94,43 @@ func ExplainNode(s *snapshot.Snapshot, name string) (*NodeReport, error) {
 		switch {
 		case snapshot.IsTerminal(p):
 			r.IgnoredPods = append(r.IgnoredPods, IgnoredPod{podRef(p), "finished (phase " + p.Status.Phase + "); nothing to move"})
-		case isMirrorPod(p):
+			continue
+		case snapshot.IsMirrorPod(p):
 			r.IgnoredPods = append(r.IgnoredPods, IgnoredPod{podRef(p), "static pod managed by the kubelet; not evicted"})
-		case isDaemonSetPod(p):
+		case snapshot.IsDaemonSetPod(p):
 			r.IgnoredPods = append(r.IgnoredPods, IgnoredPod{podRef(p), "DaemonSet pod; autoscalers do not need to reschedule it"})
 		default:
 			c.movable = append(c.movable, p)
 			r.PodsToMove = append(r.PodsToMove, podRef(p))
 		}
+		r.Requested = r.Requested.Add(snapshot.PodRequests(p))
 	}
 	for _, rule := range Catalog {
-		if rule.check != nil {
-			r.Findings = append(r.Findings, rule.check(c)...)
+		if rule.nodeCheck != nil {
+			r.Findings = append(r.Findings, rule.nodeCheck(c)...)
 		}
 	}
-	applyNodeManager(r, node)
-	sortFindings(r.Findings)
+	a.applyManager(r, node)
+	annotateKarpenterEvents(r, len(c.movable))
+	r.Findings = finalize(r.Findings, true)
 	summarize(r)
+	a.nodes[name] = r
 	return r, nil
 }
 
-// ExplainAllNodes explains every node in the snapshot, in name order.
-func ExplainAllNodes(s *snapshot.Snapshot) []*NodeReport {
-	names := make([]string, 0, len(s.Nodes))
-	for _, n := range s.Nodes {
+// Nodes explains every node, in name order.
+func (a *Analyzer) Nodes() []*NodeReport {
+	names := make([]string, 0, len(a.snap.Nodes))
+	for _, n := range a.snap.Nodes {
 		names = append(names, n.Metadata.Name)
 	}
 	sort.Strings(names)
 	out := make([]*NodeReport, 0, len(names))
 	for _, n := range names {
-		r, _ := ExplainNode(s, n) // cannot fail: the name came from the snapshot
+		r, _ := a.Node(n) // cannot fail: the name came from the snapshot
 		out = append(out, r)
 	}
 	return out
-}
-
-var severityOrder = map[Severity]int{Blocker: 0, PossibleBlocker: 1, Warning: 2, Context: 3}
-
-func sortFindings(fs []Finding) {
-	sort.SliceStable(fs, func(i, j int) bool {
-		a, b := fs[i], fs[j]
-		if severityOrder[a.Severity] != severityOrder[b.Severity] {
-			return severityOrder[a.Severity] < severityOrder[b.Severity]
-		}
-		if a.Subject != b.Subject {
-			return a.Subject < b.Subject
-		}
-		return a.Rule < b.Rule
-	})
-}
-
-// Counts returns the number of findings per severity.
-func (r *NodeReport) Counts() map[Severity]int {
-	counts := map[Severity]int{}
-	for _, f := range r.Findings {
-		counts[f.Severity]++
-	}
-	return counts
 }
 
 func summarize(r *NodeReport) {
@@ -117,41 +150,98 @@ func summarize(r *NodeReport) {
 	}
 }
 
-const labelKarpenterNodePool = "karpenter.sh/nodepool"
+const (
+	labelKarpenterNodePool    = "karpenter.sh/nodepool"
+	labelKarpenterProvisioner = "karpenter.sh/provisioner-name"
+)
 
-// applyNodeManager records which autoscaler manages the node when its labels
-// say so, and drops findings that only matter to the other autoscaler. The
-// omission is reported so nothing disappears silently.
-func applyNodeManager(r *NodeReport, n *snapshot.Node) {
-	pool, ok := n.Metadata.Labels[labelKarpenterNodePool]
-	if !ok {
-		return
+// karpenterPool returns the NodePool (or, on old Karpenter versions, the
+// Provisioner) that launched the node, or "" if Karpenter does not manage it.
+func karpenterPool(n *snapshot.Node) string {
+	if v := n.Metadata.Labels[labelKarpenterNodePool]; v != "" {
+		return v
 	}
-	r.ManagedBy = Karpenter
+	return n.Metadata.Labels[labelKarpenterProvisioner]
+}
+
+// managerOf decides which node autoscaler, if any, manages the node.
+func (a *Analyzer) managerOf(n *snapshot.Node) string {
+	if karpenterPool(n) != "" {
+		return Karpenter
+	}
+	switch a.opts.NodeAutoscaler {
+	case CA, AutoscalerNone:
+		return a.opts.NodeAutoscaler
+	}
+	if a.caSeen {
+		return CA
+	}
+	return AutoscalerUnknown
+}
+
+// noAutoscalerSeenNote explains why findings for both autoscalers are kept
+// when the snapshot shows neither.
+const noAutoscalerSeenNote = "No node autoscaler was found in the snapshot (no Karpenter labels on nodes, no Cluster Autoscaler pods or events). Findings for both are kept, because managed offerings run Cluster Autoscaler outside the cluster. If no autoscaler runs, nothing removes nodes automatically: rerun with --node-autoscaler none to drop autoscaler-specific findings."
+
+// noAutoscalerNote is the cluster-level consequence of --node-autoscaler none.
+const noAutoscalerNote = "No node autoscaler manages these nodes (--node-autoscaler none), so nothing removes them automatically: capacity only shrinks when someone deletes nodes or resizes node groups."
+
+// applyManager records who manages the node and drops findings that only
+// matter to an autoscaler that does not manage it, with a note saying so.
+func (a *Analyzer) applyManager(r *NodeReport, n *snapshot.Node) {
+	r.ManagedBy = a.managerOf(n)
+	switch r.ManagedBy {
+	case AutoscalerUnknown:
+		addNote(&r.DataNotes, noAutoscalerSeenNote)
+		return
+	case AutoscalerNone:
+		addNote(&r.DataNotes, noAutoscalerNote)
+	}
 	kept := r.Findings[:0]
 	omitted := 0
 	for _, f := range r.Findings {
-		if len(f.AppliesTo) == 1 && f.AppliesTo[0] == CA {
+		if len(f.AppliesTo) == 1 && f.AppliesTo[0] != r.ManagedBy {
 			omitted++
 			continue
 		}
 		kept = append(kept, f)
 	}
 	r.Findings = kept
-	if omitted > 0 {
-		r.DataNotes = append(r.DataNotes, fmt.Sprintf("Node is managed by Karpenter (label %s=%s); %d Cluster Autoscaler-only finding(s) were omitted.", labelKarpenterNodePool, pool, omitted))
+	if omitted == 0 {
+		return
+	}
+	switch r.ManagedBy {
+	case Karpenter:
+		addNote(&r.DataNotes, fmt.Sprintf("%s %s is managed by Karpenter (NodePool %s); %d finding(s) that only apply to Cluster Autoscaler were omitted.", nodeNotePrefix, r.Node, karpenterPool(n), omitted))
+	case CA:
+		addNote(&r.DataNotes, fmt.Sprintf("%s %s is managed by Cluster Autoscaler; %d finding(s) that only apply to Karpenter were omitted.", nodeNotePrefix, r.Node, omitted))
+	default:
+		addNote(&r.DataNotes, fmt.Sprintf("%s %s has no node autoscaler (--node-autoscaler none); %d finding(s) that only apply to Cluster Autoscaler or Karpenter were omitted.", nodeNotePrefix, r.Node, omitted))
 	}
 }
 
-func isDaemonSetPod(p *snapshot.Pod) bool {
-	cr := p.Metadata.ControllerRef()
-	return cr != nil && cr.Kind == "DaemonSet"
-}
+// nodeNotePrefix starts per-node notes, so cluster-wide views can summarize them.
+const nodeNotePrefix = "Node"
 
-func isMirrorPod(p *snapshot.Pod) bool {
-	if _, ok := p.Metadata.Annotations[annMirrorPod]; ok {
-		return true
+func isPerNodeNote(note string) bool { return strings.HasPrefix(note, nodeNotePrefix+" ") }
+
+// clusterAutoscalerSeen reports whether the snapshot shows Cluster Autoscaler
+// running in the cluster: its workload, its pods or its events.
+func clusterAutoscalerSeen(s *snapshot.Snapshot) bool {
+	for i := range s.Workloads {
+		if strings.Contains(s.Workloads[i].Metadata.Name, "cluster-autoscaler") {
+			return true
+		}
 	}
-	cr := p.Metadata.ControllerRef()
-	return cr != nil && cr.Kind == "Node"
+	for i := range s.Pods {
+		if strings.Contains(s.Pods[i].Metadata.Name, "cluster-autoscaler") {
+			return true
+		}
+	}
+	for i := range s.Events {
+		if autoscalerOf(&s.Events[i]) == CA {
+			return true
+		}
+	}
+	return false
 }

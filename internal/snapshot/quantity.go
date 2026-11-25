@@ -6,6 +6,7 @@ package snapshot
 import (
 	"fmt"
 	"math"
+	"sort"
 	"strconv"
 	"strings"
 	"unicode"
@@ -53,6 +54,11 @@ func (r Resources) Sub(o Resources) Resources {
 	return Resources{r.MilliCPU - o.MilliCPU, r.MemoryBytes - o.MemoryBytes, r.Pods - o.Pods}
 }
 
+// Max returns the larger value of each dimension.
+func (r Resources) Max(o Resources) Resources {
+	return Resources{max(r.MilliCPU, o.MilliCPU), max(r.MemoryBytes, o.MemoryBytes), max(r.Pods, o.Pods)}
+}
+
 func (r Resources) String() string {
 	return fmt.Sprintf("cpu=%s memory=%s", FormatCPU(r.MilliCPU), FormatMemory(r.MemoryBytes))
 }
@@ -61,32 +67,49 @@ func (r Resources) String() string {
 const unlimitedPods = 1 << 30
 
 func NodeAllocatable(n *Node) Resources {
-	r := Resources{Pods: unlimitedPods}
-	if v, ok := n.Status.Allocatable["cpu"]; ok {
-		r.MilliCPU = milli(v)
-	}
-	if v, ok := n.Status.Allocatable["memory"]; ok {
-		r.MemoryBytes = whole(v)
-	}
+	r := ParseResources(n.Status.Allocatable)
+	r.Pods = unlimitedPods
 	if v, ok := n.Status.Allocatable["pods"]; ok {
 		r.Pods = whole(v)
 	}
 	return r
 }
 
-// PodRequests sums container requests. Init containers and pod overhead are
-// not modelled yet. Each pod also consumes one pod slot.
-func PodRequests(p *Pod) Resources {
-	r := Resources{Pods: 1}
-	for _, c := range p.Spec.Containers {
-		if v, ok := c.Resources.Requests["cpu"]; ok {
-			r.MilliCPU += milli(v)
-		}
-		if v, ok := c.Resources.Requests["memory"]; ok {
-			r.MemoryBytes += whole(v)
-		}
+// ParseResources reads the cpu and memory entries of a resource list such as
+// requests, a VPA recommendation or a LimitRange default.
+func ParseResources(m map[string]string) Resources {
+	var r Resources
+	if v, ok := m["cpu"]; ok {
+		r.MilliCPU = milli(v)
+	}
+	if v, ok := m["memory"]; ok {
+		r.MemoryBytes = whole(v)
 	}
 	return r
+}
+
+// ContainerRequests returns a container's CPU and memory requests.
+func ContainerRequests(c Container) Resources { return ParseResources(c.Resources.Requests) }
+
+// PodRequests returns what the scheduler reserves for a pod: the larger of its
+// long-running containers (app containers plus native sidecars) and its
+// heaviest init step, plus pod overhead. Every pod also takes one pod slot.
+func PodRequests(p *Pod) Resources {
+	var running, sidecars, initPeak Resources
+	for _, c := range p.Spec.InitContainers {
+		r := ContainerRequests(c)
+		if c.IsSidecar() {
+			sidecars = sidecars.Add(r)
+			continue
+		}
+		initPeak = initPeak.Max(sidecars.Add(r))
+	}
+	for _, c := range p.Spec.Containers {
+		running = running.Add(ContainerRequests(c))
+	}
+	total := running.Add(sidecars).Max(initPeak).Add(ParseResources(p.Spec.Overhead))
+	total.Pods = 1
+	return total
 }
 
 func milli(v string) int64 {
@@ -128,4 +151,19 @@ func FormatMemory(b int64) string {
 		}
 	}
 	return strconv.FormatInt(b, 10)
+}
+
+// FormatResourceList renders a resource list such as "cpu=1, memory=2Gi" in a
+// stable order.
+func FormatResourceList(m map[string]string) string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	parts := make([]string, 0, len(keys))
+	for _, k := range keys {
+		parts = append(parts, k+"="+m[k])
+	}
+	return strings.Join(parts, ", ")
 }

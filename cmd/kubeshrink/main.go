@@ -29,17 +29,24 @@ var (
 const usage = `kubeshrink - find out why your cluster won't shrink (read-only)
 
 Usage:
-  kubeshrink explain node <name>  (--snapshot <path> | --context <name>) [-o text|json]
-  kubeshrink explain nodes        (--snapshot <path> | --context <name>) [-o text|json]
+  kubeshrink explain cluster           SOURCE [--top N] [-o text|json]
+  kubeshrink explain namespace <name>  SOURCE [-o text|json]   (aliases: ns, team)
+  kubeshrink explain node <name>       SOURCE [-o text|json]
+  kubeshrink explain nodes             SOURCE [-o text|json]
   kubeshrink snapshot --context <name> --out <dir>
-  kubeshrink rules
+  kubeshrink rules [-o text|json]
   kubeshrink version
 
-Sources:
+SOURCE is one of:
   --snapshot, -f <path>  YAML/JSON exported with kubectl (a file or a directory)
   --context <name>       a live cluster, read with list calls only; must be named explicitly
-  --kubeconfig <path>    kubeconfig file (default: $KUBECONFIG or ~/.kube/config)
-  --timeout <duration>   timeout for live reads (default 60s)
+    --kubeconfig <path>  kubeconfig file (default: $KUBECONFIG or ~/.kube/config)
+    --timeout <d>        timeout for all live reads (default 60s)
+
+Options:
+  --top <n>               namespaces in the text cluster view (default 10; 0 lists all)
+  --node-autoscaler <a>   auto (default), cluster-autoscaler or none: what manages
+                          nodes that carry no Karpenter label
 
 KubeShrink never modifies a cluster and never reads Secrets or ConfigMaps.
 Installed on PATH as "kubectl-shrink", it also runs as "kubectl shrink".
@@ -64,10 +71,7 @@ func run(args []string, stdout, stderr io.Writer, loadLive liveLoader) int {
 		fmt.Fprintln(stdout, versionString())
 		return 0
 	case "rules":
-		if err := explain.WriteCatalog(stdout); err != nil {
-			return 1
-		}
-		return 0
+		return runRules(args[1:], stdout, stderr)
 	case "explain":
 		return runExplain(args[1:], stdout, stderr, loadLive)
 	case "snapshot":
@@ -78,8 +82,9 @@ func run(args []string, stdout, stderr io.Writer, loadLive liveLoader) int {
 }
 
 type options struct {
-	snapshot, kubeconfig, context, output, out string
-	timeout                                    time.Duration
+	snapshot, kubeconfig, context, output, out, nodeAutoscaler string
+	timeout                                                    time.Duration
+	top                                                        int
 }
 
 func newFlags(name string, stderr io.Writer, o *options) *flag.FlagSet {
@@ -93,6 +98,8 @@ func newFlags(name string, stderr io.Writer, o *options) *flag.FlagSet {
 	fs.StringVar(&o.output, "o", "text", "shorthand for --output")
 	fs.StringVar(&o.out, "out", "", "directory for the exported snapshot (snapshot command)")
 	fs.DurationVar(&o.timeout, "timeout", 60*time.Second, "timeout for live reads")
+	fs.IntVar(&o.top, "top", 10, "namespaces in the text cluster view (0 lists all)")
+	fs.StringVar(&o.nodeAutoscaler, "node-autoscaler", explain.AutoscalerAuto, "auto, cluster-autoscaler or none")
 	return fs
 }
 
@@ -126,20 +133,62 @@ func loadSource(o *options, stderr io.Writer, loadLive liveLoader) (*snapshot.Sn
 	return nil, errors.New("a source is required: --snapshot <path> or --context <name> (the current context is never used implicitly)")
 }
 
+const explainUsage = "usage: kubeshrink explain cluster | namespace <name> | node <name> | nodes\n"
+
+func validOutput(o *options, stderr io.Writer) bool {
+	if o.output != "text" && o.output != "json" {
+		fmt.Fprintf(stderr, "error: --output must be text or json, got %q\n", o.output)
+		return false
+	}
+	return true
+}
+
+func runRules(args []string, stdout, stderr io.Writer) int {
+	var o options
+	pos, err := parseInterspersed(newFlags("rules", stderr, &o), args)
+	if err != nil || len(pos) != 0 || !validOutput(&o, stderr) {
+		return 2
+	}
+	if o.output == "json" {
+		err = explain.WriteJSON(stdout, explain.Catalog)
+	} else {
+		err = explain.WriteCatalog(stdout)
+	}
+	if err != nil {
+		fmt.Fprintf(stderr, "error: %v\n", err)
+		return 1
+	}
+	return 0
+}
+
+// explainTarget reads what to explain from the positional arguments.
+func explainTarget(pos []string) (target, name string, ok bool) {
+	switch {
+	case len(pos) == 1 && (pos[0] == "cluster" || pos[0] == "nodes"):
+		return pos[0], "", true
+	case len(pos) == 2 && pos[0] == "node":
+		return "node", pos[1], true
+	case len(pos) == 2 && (pos[0] == "namespace" || pos[0] == "ns" || pos[0] == "team"):
+		return "namespace", pos[1], true
+	}
+	return "", "", false
+}
+
 func runExplain(args []string, stdout, stderr io.Writer, loadLive liveLoader) int {
 	var o options
 	pos, err := parseInterspersed(newFlags("explain", stderr, &o), args)
-	if err != nil {
+	if err != nil || !validOutput(&o, stderr) {
 		return 2
 	}
-	if o.output != "text" && o.output != "json" {
-		fmt.Fprintf(stderr, "error: --output must be text or json, got %q\n", o.output)
+	switch o.nodeAutoscaler {
+	case explain.AutoscalerAuto, explain.CA, explain.AutoscalerNone:
+	default:
+		fmt.Fprintf(stderr, "error: --node-autoscaler must be auto, cluster-autoscaler or none, got %q\n", o.nodeAutoscaler)
 		return 2
 	}
-	oneNode := len(pos) == 2 && pos[0] == "node"
-	allNodes := len(pos) == 1 && pos[0] == "nodes"
-	if !oneNode && !allNodes {
-		fmt.Fprint(stderr, "usage: kubeshrink explain node <name> | kubeshrink explain nodes\n")
+	target, name, ok := explainTarget(pos)
+	if !ok {
+		fmt.Fprint(stderr, explainUsage)
 		return 2
 	}
 	s, err := loadSource(&o, stderr, loadLive)
@@ -147,24 +196,39 @@ func runExplain(args []string, stdout, stderr io.Writer, loadLive liveLoader) in
 		fmt.Fprintf(stderr, "error: %v\n", err)
 		return 1
 	}
-	if pos[0] == "nodes" {
-		reports := explain.ExplainAllNodes(s)
-		if o.output == "json" {
-			err = explain.WriteJSON(stdout, reports)
-		} else {
-			err = explain.WriteSummaryTable(stdout, reports)
+	a := explain.NewAnalyzer(s, explain.Options{NodeAutoscaler: o.nodeAutoscaler})
+	var report any
+	var text func(io.Writer) error
+	switch target {
+	case "cluster":
+		r := a.Cluster()
+		report = r
+		text = func(w io.Writer) error {
+			r.Truncate(o.top)
+			return explain.WriteClusterText(w, r)
 		}
-	} else {
-		r, rerr := explain.ExplainNode(s, pos[1])
+	case "nodes":
+		rs := a.Nodes()
+		report, text = rs, func(w io.Writer) error { return explain.WriteSummaryTable(w, rs) }
+	case "node":
+		r, rerr := a.Node(name)
 		if rerr != nil {
 			fmt.Fprintf(stderr, "error: %v\n", rerr)
 			return 1
 		}
-		if o.output == "json" {
-			err = explain.WriteJSON(stdout, r)
-		} else {
-			err = explain.WriteText(stdout, r)
+		report, text = r, func(w io.Writer) error { return explain.WriteNodeText(w, r) }
+	case "namespace":
+		r, rerr := a.Namespace(name)
+		if rerr != nil {
+			fmt.Fprintf(stderr, "error: %v\n", rerr)
+			return 1
 		}
+		report, text = r, func(w io.Writer) error { return explain.WriteNamespaceText(w, r) }
+	}
+	if o.output == "json" {
+		err = explain.WriteJSON(stdout, report)
+	} else {
+		err = text(stdout)
 	}
 	if err != nil {
 		fmt.Fprintf(stderr, "error: %v\n", err)
@@ -188,8 +252,8 @@ func runSnapshot(args []string, stdout, stderr io.Writer, loadLive liveLoader) i
 		fmt.Fprintf(stderr, "error: %v\n", err)
 		return 1
 	}
-	fmt.Fprintf(stdout, "Saved %d nodes, %d pods, %d PDBs, %d HPAs, %d ScaledObjects, %d workloads, %d events to %s\n",
-		len(s.Nodes), len(s.Pods), len(s.PDBs), len(s.HPAs), len(s.ScaledObjects), len(s.Workloads), len(s.Events), o.out)
+	fmt.Fprintf(stdout, "Saved %d nodes, %d pods, %d PDBs, %d HPAs, %d ScaledObjects, %d workloads, %d NodePools, %d NodeClaims, %d events to %s\n",
+		len(s.Nodes), len(s.Pods), len(s.PDBs), len(s.HPAs), len(s.ScaledObjects), len(s.Workloads), len(s.NodePools), len(s.NodeClaims), len(s.Events), o.out)
 	for _, n := range s.Notes {
 		fmt.Fprintf(stdout, "note: %s\n", n)
 	}

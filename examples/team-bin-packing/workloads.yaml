@@ -1,0 +1,50 @@
+# Synthetic example: the workloads and autoscalers of four teams.
+apiVersion: v1
+kind: List
+items:
+  - apiVersion: apps/v1
+    kind: Deployment
+    metadata: {name: api, namespace: checkout}
+    spec: {replicas: 3}
+  - apiVersion: apps/v1
+    kind: ReplicaSet
+    metadata:
+      name: api-7d9f
+      namespace: checkout
+      ownerReferences: [{kind: Deployment, name: api, controller: true}]
+    spec: {replicas: 3}
+  - apiVersion: autoscaling/v2
+    kind: HorizontalPodAutoscaler
+    metadata: {name: api, namespace: checkout}
+    spec: {scaleTargetRef: {kind: Deployment, name: api}, minReplicas: 3, maxReplicas: 10}
+  - apiVersion: policy/v1
+    kind: PodDisruptionBudget
+    metadata: {name: api, namespace: checkout}
+    spec: {minAvailable: 2, selector: {matchLabels: {app: api}}}
+    status: {disruptionsAllowed: 1, currentHealthy: 3, desiredHealthy: 2, expectedPods: 3}
+  - apiVersion: apps/v1
+    kind: Deployment
+    metadata: {name: worker, namespace: reports}
+    spec: {replicas: 2}
+  - apiVersion: apps/v1
+    kind: ReplicaSet
+    metadata:
+      name: worker-5c8b
+      namespace: reports
+      ownerReferences: [{kind: Deployment, name: worker, controller: true}]
+    spec: {replicas: 2}
+  - apiVersion: keda.sh/v1alpha1
+    kind: ScaledObject
+    metadata: {name: worker, namespace: reports}
+    spec: {scaleTargetRef: {name: worker}, minReplicaCount: 2, maxReplicaCount: 10}
+  - apiVersion: autoscaling/v2
+    kind: HorizontalPodAutoscaler
+    metadata:
+      name: keda-hpa-worker
+      namespace: reports
+      ownerReferences: [{kind: ScaledObject, name: worker, controller: true}]
+    spec: {scaleTargetRef: {kind: Deployment, name: worker}, minReplicas: 2, maxReplicas: 10}
+  - apiVersion: apps/v1
+    kind: StatefulSet
+    metadata: {name: trainer, namespace: ml}
+    spec: {replicas: 1}
