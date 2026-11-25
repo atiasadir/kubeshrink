@@ -101,7 +101,7 @@ kubectl shrink explain nodes --context my-dev-cluster
 
 ### In a cluster (proof of concept)
 
-`kubeshrink serve` scans the cluster on an interval and exports what it finds as low-cardinality Prometheus metrics. No image is published yet, so build one and install the chart on a local cluster. Docker Desktop shares local images with its cluster; with kind, run `kind load docker-image kubeshrink:dev` first.
+`kubeshrink serve` scans the cluster on an interval and exports what it finds as low-cardinality Prometheus metrics. Version tags publish a signed image to GitHub Container Registry ([see below](#from-github-container-registry)); to try unreleased changes, build the image and install the chart on a local cluster. Docker Desktop shares local images with its cluster; with kind, run `kind load docker-image kubeshrink:dev` first.
 
 ```sh
 make image    # static binary on Azure Linux distroless; nothing is pushed
@@ -113,6 +113,29 @@ curl -s localhost:8080/metrics | grep '^kubeshrink_'
 - The ClusterRole grants get and list only, never on Secrets or ConfigMaps. The pod runs as a non-root user with a read-only root filesystem and meets the `restricted` Pod Security Standard.
 - With the Prometheus Operator, add `--set serviceMonitor.enabled=true` (or `podMonitor.enabled=true`). Metrics, example queries and alerts are in [docs/metrics.md](docs/metrics.md); what has been tested is in [docs/compatibility.md](docs/compatibility.md).
 - `make scan` checks the image with Trivy. `helm uninstall kubeshrink -n kubeshrink` removes everything the chart created; the namespace stays until you delete it.
+
+### From GitHub Container Registry
+
+Each version tag (`v*`) publishes a multi-arch image (`linux/amd64` and `linux/arm64`) to `ghcr.io/atiasadir/kubeshrink`, tagged with the version without its `v`. It is signed with cosign keyless signing and carries its CycloneDX SBOM as a signed attestation. Nothing is published before the first tag.
+
+Verify the image first. The signature and the SBOM attestation must come from this repository's release workflow, run for the version's tag:
+
+```sh
+VERSION=0.1.0   # a released version
+IMAGE=ghcr.io/atiasadir/kubeshrink:$VERSION
+IDENTITY=https://github.com/atiasadir/kubeshrink/.github/workflows/release.yml@refs/tags/v$VERSION
+ISSUER=https://token.actions.githubusercontent.com
+cosign verify "$IMAGE" --certificate-identity "$IDENTITY" --certificate-oidc-issuer "$ISSUER"
+cosign verify-attestation --type cyclonedx "$IMAGE" \
+  --certificate-identity "$IDENTITY" --certificate-oidc-issuer "$ISSUER" > /dev/null
+```
+
+`cosign verify` prints the digest it checked (`docker-manifest-digest`). Install that exact image from a clone of this repository:
+
+```sh
+helm install kubeshrink charts/kubeshrink -n kubeshrink --create-namespace \
+  --set image.repository=ghcr.io/atiasadir/kubeshrink --set image.tag="$VERSION@sha256:<digest>"
+```
 
 ## Limitations
 

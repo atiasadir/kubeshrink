@@ -1,0 +1,130 @@
+# SPDX-License-Identifier: Apache-2.0
+# Publishes the image when a version tag (v*) is pushed, and only then. The
+# image is scanned first with the same gate as CI, then built for linux/amd64
+# and linux/arm64, pushed to GitHub Container Registry, signed by digest with
+# cosign keyless signing (GitHub OIDC) and given its CycloneDX SBOM as a signed
+# attestation. The README shows how to verify both.
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions: {}
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  IMAGE: ghcr.io/atiasadir/kubeshrink
+
+# Every action is pinned to a full commit SHA; Dependabot proposes updates.
+jobs:
+  scan:
+    name: Scan gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    outputs:
+      commit: ${{ steps.info.outputs.commit }}
+      date: ${{ steps.info.outputs.date }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Record the build information
+        id: info
+        run: |
+          echo "commit=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+          echo "date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+      - name: Build the image (not pushed)
+        env:
+          VERSION: ${{ github.ref_name }}
+          COMMIT: ${{ steps.info.outputs.commit }}
+          DATE: ${{ steps.info.outputs.date }}
+        run: make image IMAGE=kubeshrink:release VERSION="$VERSION" COMMIT="$COMMIT" DATE="$DATE"
+      - name: Scan the image (fails on fixable HIGH or CRITICAL findings)
+        run: make scan IMAGE=kubeshrink:release
+
+  publish:
+    name: Build, push, sign and attest
+    needs: scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Tags, labels and annotations
+        id: meta
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
+        env:
+          # Annotate the index too, so the multi-arch package links to the repository.
+          DOCKER_METADATA_ANNOTATIONS_LEVELS: manifest,index
+        with:
+          images: ${{ env.IMAGE }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+          annotations: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+      - name: Build and push linux/amd64 and linux/arm64
+        id: build
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          annotations: ${{ steps.meta.outputs.annotations }}
+          build-args: |
+            VERSION=${{ github.ref_name }}
+            COMMIT=${{ needs.scan.outputs.commit }}
+            DATE=${{ needs.scan.outputs.date }}
+      - uses: sigstore/cosign-installer@881c63bd87e38389154debd8331404ce7ca8a3ab # v4.1.4
+      - name: Sign the image by digest (keyless, GitHub OIDC)
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: cosign sign --yes "$IMAGE@$DIGEST"
+      - name: Write an SBOM of the pushed image
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          docker pull "$IMAGE@$DIGEST"
+          docker tag "$IMAGE@$DIGEST" kubeshrink:published
+          make sbom IMAGE=kubeshrink:published
+      - name: Attach the SBOM as a signed attestation
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: cosign attest --yes --type cyclonedx --predicate dist/kubeshrink.cdx.json "$IMAGE@$DIGEST"
+      - name: Keep the SBOM
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: kubeshrink-sbom-${{ github.ref_name }}
+          path: dist/kubeshrink.cdx.json
+          if-no-files-found: error
+      - name: Summary
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+          TAGS: ${{ steps.meta.outputs.tags }}
+        run: |
+          {
+            echo "Published $IMAGE@$DIGEST, signed by digest, with a CycloneDX SBOM attestation. Tags:"
+            echo "$TAGS" | sed 's/^/- /'
+          } >> "$GITHUB_STEP_SUMMARY"
