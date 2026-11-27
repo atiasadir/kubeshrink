@@ -10,6 +10,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - The Helm chart (version 0.1.1) installs the released image by default: `image.repository` is `ghcr.io/atiasadir/kubeshrink`, and `image.tag` falls back to the chart's `appVersion`, now `0.1.0`. Pinning it with `image.digest` is recommended. A local build needs `--set image.repository=kubeshrink --set image.tag=dev`, as in the README; `make e2e` sets both.
 - The release workflow stops before it builds or pushes anything when the chart's `appVersion` is not the tag without its `v`. `make release-check VERSION=vX.Y.Z` runs the same check.
 - `SECURITY.md`: the latest release, 0.1.x, is the supported version.
+- The *New issue* page links to private vulnerability reporting, so security problems are reported privately instead of in a public issue.
 
 ## [0.1.0] - 2026-11-25
 
